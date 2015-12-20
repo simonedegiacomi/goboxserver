@@ -4,8 +4,7 @@ import (
     "github.com/jmoiron/sqlx"
     _ "github.com/go-sql-driver/mysql"
     "goboxserver/main/db"
-    "net/http"
-    "fmt"
+    "goboxserver/main/web"
 )
 
 type prova struct {
@@ -14,6 +13,8 @@ type prova struct {
 
 func main () {
     db := db.NewDB(sqlx.MustConnect("mysql", "simonedegiacomi@/gbms"))
-    fmt.Println(db)
-    http.ListenAndServe("127.0.0.1:8081", nil)
+    server := web.NewServer(db)
+    server.ListenAndServer("localhost:8081")
+    
+    
 }

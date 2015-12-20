@@ -12,7 +12,7 @@ func NewSigner (secret string) *Signer {
     return &Signer{secret: secret}
 }
 
-type SessionToken {
+type SessionToken struct {
     UserId      string
     Code        string
     SessionType string

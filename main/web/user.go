@@ -1,23 +1,25 @@
 package web
 
 import (
-    "json"
+    "encoding/json"
     "regexp"
     "github.com/dgrijalva/jwt-go"
     "goboxserver/main/utils"
     "math/rand"
+    "goboxserver/main/db"
+    "net/http"
 )
 
 // Registration
 
-struct registerPostJson struct {
+type registerPostJson struct {
     name        string  `json: "name"`
     email       string  `json: "email"`
     password    string  `json: "password"`
 }
 
-type registerHandler {
-    db      *DB
+type registerHandler struct {
+    db      *db.DB
 }
 
 func (l registerHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
@@ -31,14 +33,14 @@ func (l registerHandler) ServeHTTP (response http.ResponseWriter, request *http.
     }
         
     // Validate the json
-    if err := data.validate(); err := nil {
+    if err = data.validate(); err := nil {
         // The data is not valid
         http.Error(response, err, 400)
         return
     }
     
     // Create the user
-    passwordHash := password
+    passwordHash := sha1.Sum(password)
     id, err := db.CreateUser(data.name, data.email, passwordHash)
     // Check if there was an error
     if err != nil {
@@ -50,11 +52,11 @@ func (l registerHandler) ServeHTTP (response http.ResponseWriter, request *http.
     response.WriteHeader(200)
 }
 
-func newRegisterHandler(db *DB) {
+func newRegisterHandler(db *db.DB) {
     return loginHandler{db: db}
 }
 
-func (data registerPostJson) validate() err {
+func (data registerPostJson) validate() error {
     // Validate the email
     re := regexp.MustCompile(".+@.+\\..+")
     matched := re.Match([]byte(data.email))
@@ -85,8 +87,8 @@ type loginPostJson struct {
 }
 
 type loginHanlder struct {
-    db          *DB
-    jwtSigner   *Signer
+    db          *db.DB
+    jwtSigner   *utils.Signer
 }
 
 func (l loginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Request) {
@@ -130,7 +132,7 @@ func (l loginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Req
     }
     
     // Save the token
-    err := db.CreateSession(userInfo.Id, r.Header.Get("User-Agent"), token.Code, sessionType)
+    err = db.CreateSession(userInfo.Id, r.Header.Get("User-Agent"), token.Code, sessionType)
     
     if err != nil {
         http.Error(response, "Internal server error", 500)
@@ -138,24 +140,29 @@ func (l loginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Req
     }
     
     // Send the token to the client
-    json.NewEncoder(response, struct{result: "logged in", token: tokenString})
+    json.NewEncoder(response, jsonLoginResponse{result: "logged in", token: tokenString})
 }
 
-func newLoginHandler(db *DB, s utils.Signer) {
+type jsonLoginResponse struct {
+    result      string  `json:"result"`
+    token       string  `json:"token"`
+}
+
+func newLoginHandler(db *db.DB, s utils.Signer) {
     return loginHanlder {db: db, jwtSigner: s }
 }
 
 // Available handler
 
-type AvailableHandler {
-    db      *DB
+type AvailableHandler struct {
+    db      *db.DB
 }
 
-type availablePostJson {
+type availablePostJson struct {
     name    string  `json: "name"`
 }
 
-func newAvailableHandler (db *DB) {
+func newAvailableHandler (db *db.DB) {
     return AvailableHandler{db: db}
 }
 
@@ -177,18 +184,22 @@ func (h AvailableHandler) ServeHTTP (response http.ResponseWriter, request *http
     // Check if a user with this name already exist
     encoder := json.NewEncoder(response)
     if db.ExistUser(data.name) {
-        encoder.encode(struct{available: false})
+        encoder.encode(jsonAvailableResponse{available: false})
     } else {
-        encoder.encode(struct{available: false})
+        encoder.encode(jsonAvailableResponse{available: false})
     }
+}
+
+type jsonAvailableResponse struct {
+    available   bool `json:"available"`
 }
 
 // Check handler
 type CheckHandler struct {
-    db      *DB
+    db      *db.DB
 }
 
-func NewCheckHandler(db *DB) LogoutHandler {
+func NewCheckHandler(db *db.DB) CheckHandler {
     return LogoutHandler{db: db}
 }
 
@@ -208,11 +219,11 @@ func (l CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Req
     token := SessionToken {
         UserId: userInfo.Id,
         Code: string(rand.Float64()),
-        SessionType: tokenInformations["t"]
+        SessionType: tokenInformations["t"],
     }
     
     // Sign the token
-    tokenString, err := l.jwtSigner.Sign(toke)
+    tokenString, err := l.jwtSigner.Sign(token)
     
     if err != nil {
         http.Error(response, "Internal server error", 500)
@@ -220,7 +231,7 @@ func (l CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Req
     }
     
     // Save the token
-    err := db.UpdateSessionCode(userInfo.Id, tokenInformation["id"], token.Code)
+    err = db.UpdateSessionCode(userInfo.Id, tokenInformation["id"], token.Code)
     
     if err != nil {
         http.Error(response, "Internal server error", 500)
@@ -228,15 +239,20 @@ func (l CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Req
     }
     
     // Send the new token
-    json.NewEncoder(response).Encode(struct {state: "valid", newOne: tokenString})
+    json.NewEncoder(response).Encode(jsonCheckResponse{state: "valid", newOne: tokenString})
+}
+
+type jsonCheckResponse struct {
+    state   string `json:"state"`
+    newOne  string `json:"newOne"`
 }
 
 // Logout handler
-type Logoutandler struct {
-    db      *DB
+type LogoutHandler struct {
+    db      *db.DB
 }
 
-func NewLogoutHandler(db *DB) LogoutHandler {
+func NewLogoutHandler(db *db.DB) LogoutHandler {
     return LogoutHandler{db: db}
 }
 

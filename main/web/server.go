@@ -5,15 +5,15 @@ import (
     "github.com/gorilla/mux"
     "github.com/auth0/go-jwt-middleware"
     "github.com/dgrijalva/jwt-go"
-    "github.com/gorilla/context"
+    "goboxserver/main/db"
 )
 
 type Server struct {
-    db      *DB
+    db      *db.DB
     router  *mux.Router
 }
 
-func NewServer (db *DB) *Server {
+func NewServer (db *db.DB) *Server {
     
     jwtMiddleware := newJWTMiddleware()
     
@@ -30,13 +30,11 @@ func NewServer (db *DB) *Server {
 	// Check a token and create a new one
 	user.Check("/check").HandlerFunc(negroni.New (
 	    jwtMiddleware,
-	    negroni.Wrap(checkHandler)
-	    ))
+	    negroni.Wrap(checkHandler)))
 	// Invalidate a token
 	user.Path("/logout").HandlerFunc(negroni.New(
 	    jwtMiddleware,
-	    negroni.Wrap(LogoutHandler)
-	    ))
+	    negroni.Wrap(LogoutHandler)))
 	
     ws.PathPrefix("/ws").Subrouter()
     
@@ -44,7 +42,7 @@ func NewServer (db *DB) *Server {
     
     return &Server {
         db: db,
-        router: router
+        router: router,
     }
 }
 
