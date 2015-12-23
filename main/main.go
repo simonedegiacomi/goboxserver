@@ -7,14 +7,11 @@ import (
     "goboxserver/main/web"
 )
 
-type prova struct {
-    ciao    string
-}
-
 func main () {
+    // Connect to the database
     db := db.NewDB(sqlx.MustConnect("mysql", "simonedegiacomi@/gbms"))
+    // Create the GoBox Main Server
     server := web.NewServer(db)
+    // And listen
     server.ListenAndServer("localhost:8081")
-    
-    
 }

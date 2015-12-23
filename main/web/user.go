@@ -1,13 +1,18 @@
 package web
 
+// This file contains all the HTTP controllers of the user.
+
 import (
     "encoding/json"
     "regexp"
+    "errors"
     "github.com/dgrijalva/jwt-go"
     "goboxserver/main/utils"
     "math/rand"
     "goboxserver/main/db"
+    "github.com/gorilla/context"
     "net/http"
+    "crypto/sha1"
 )
 
 // Registration
@@ -18,33 +23,34 @@ type registerPostJson struct {
     password    string  `json: "password"`
 }
 
-type registerHandler struct {
+type signupHandler struct {
     db      *db.DB
 }
 
-func (l registerHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
+func (l signupHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
     // Decoder the json
-    var registerPostJson data
+    var data registerPostJson
         
-    if err := json.NewDecoder(request).Decode(&data); err != nil {
+    if err := json.NewDecoder(request.Body).Decode(&data); err != nil {
         // Cannot read json
         http.Error(response, "Cannot read json", 400)
         return
     }
         
     // Validate the json
-    if err = data.validate(); err := nil {
+    if err := data.validate(); err != nil {
         // The data is not valid
-        http.Error(response, err, 400)
+        http.Error(response, err.Error(), 400)
         return
     }
     
     // Create the user
-    passwordHash := sha1.Sum(password)
-    id, err := db.CreateUser(data.name, data.email, passwordHash)
+    passwordHash := sha1.Sum([]byte(data.password))
+    // Create the new user in the databse
+    id, err := l.db.CreateUser(data.name, data.email, passwordHash[0:])
     // Check if there was an error
     if err != nil {
-        http.Error(response, err, 500)
+        http.Error(response, err.Error(), 500)
         return
     }
     
@@ -52,8 +58,8 @@ func (l registerHandler) ServeHTTP (response http.ResponseWriter, request *http.
     response.WriteHeader(200)
 }
 
-func newRegisterHandler(db *db.DB) {
-    return loginHandler{db: db}
+func newSignupHandler(db *db.DB) signupHandler {
+    return signupHandler{db: db}
 }
 
 func (data registerPostJson) validate() error {
@@ -76,6 +82,8 @@ func (data registerPostJson) validate() error {
     if len(data.password) < 8 {
         return errors.New("Invalid password")
     }
+    
+    return nil
 }
 
 // Login
@@ -93,16 +101,16 @@ type loginHanlder struct {
 
 func (l loginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Request) {
     // Decoder the json
-    var loginPostJson data
+    var data loginPostJson
         
-    if err := json.NewDecoder(request).Decode(&data); err != nil {
+    if err := json.NewDecoder(request.Body).Decode(&data); err != nil {
         // Cannot read json
         http.Error(response, "Cannot read json", 400)
         return
     }
     
     // Check if the password is correct
-    userInfo, err := DB.getUser(data.name)
+    userInfo, err := l.db.GetUser(data.name)
     
     if err != nil {
         response.WriteHeader(401)
@@ -110,116 +118,17 @@ func (l loginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Req
     }
     
     // Calculate the password hash
-    passwordHash := sha1.Sum(data.password)
+    passwordHash := sha1.Sum([]byte(data.password))
     
-    if passwordHash != userInfo.PasswordHash {
-        esponse.WriteHeader(401)
+    if utils.ComparePassword(passwordHash[0:], userInfo.Password[0:]) {
+        response.WriteHeader(401)
         return
     }
         
     // Generate a new token
-    token := SessionToken {
-        UserId: userInfo.Id,
-        Code: string(rand.Float64()),
-    }
-    
-    // Sign the token
-    tokenString, err := l.jwtSigner.Sign(toke)
-    
-    if err != nil {
-        http.Error(response, "Internal server error", 500)
-        return
-    }
-    
-    // Save the token
-    err = db.CreateSession(userInfo.Id, r.Header.Get("User-Agent"), token.Code, sessionType)
-    
-    if err != nil {
-        http.Error(response, "Internal server error", 500)
-        return
-    }
-    
-    // Send the token to the client
-    json.NewEncoder(response, jsonLoginResponse{result: "logged in", token: tokenString})
-}
-
-type jsonLoginResponse struct {
-    result      string  `json:"result"`
-    token       string  `json:"token"`
-}
-
-func newLoginHandler(db *db.DB, s utils.Signer) {
-    return loginHanlder {db: db, jwtSigner: s }
-}
-
-// Available handler
-
-type AvailableHandler struct {
-    db      *db.DB
-}
-
-type availablePostJson struct {
-    name    string  `json: "name"`
-}
-
-func newAvailableHandler (db *db.DB) {
-    return AvailableHandler{db: db}
-}
-
-func (h AvailableHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
-    var availableHandler data
-        
-    if err := json.NewDecoder(request).Decode(&data); err != nil {
-        // Cannot read json
-        http.Error(response, "Cannot read json", 400)
-        return
-    }
-    
-    // Check that the name is at least 4 character long
-    if len(data.name) < 4 {
-        response.Error(response, "The min length of the name is 4 charactes", 400)
-        return
-    }
-    
-    // Check if a user with this name already exist
-    encoder := json.NewEncoder(response)
-    if db.ExistUser(data.name) {
-        encoder.encode(jsonAvailableResponse{available: false})
-    } else {
-        encoder.encode(jsonAvailableResponse{available: false})
-    }
-}
-
-type jsonAvailableResponse struct {
-    available   bool `json:"available"`
-}
-
-// Check handler
-type CheckHandler struct {
-    db      *db.DB
-}
-
-func NewCheckHandler(db *db.DB) CheckHandler {
-    return LogoutHandler{db: db}
-}
-
-func (l CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
-    userToken := context.Get(request, "user")
-    
-    tokenInformations := user.(*jwt.Token).Claims
-    
-    err := db.CheckSession(tokenInformation["id"], tokenInformation["c"])
-    
-    if err != nil {
-        http.Error(response, "Invalid Token", 401)
-        return
-    }
-    
-    // If the token is valid let's generate a new one
-    token := SessionToken {
-        UserId: userInfo.Id,
-        Code: string(rand.Float64()),
-        SessionType: tokenInformations["t"],
+    token := utils.SessionToken {
+        UserId: string(userInfo.Id),
+        Code: string(rand.Int63()),
     }
     
     // Sign the token
@@ -231,7 +140,107 @@ func (l CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Req
     }
     
     // Save the token
-    err = db.UpdateSessionCode(userInfo.Id, tokenInformation["id"], token.Code)
+    err = l.db.CreateSession(userInfo.Id, request.Header.Get("User-Agent"), tokenString, data.loginType)
+    
+    if err != nil {
+        http.Error(response, "Internal server error", 500)
+        return
+    }
+    
+    // Send the token to the client
+    json.NewEncoder(response).Encode(jsonLoginResponse{result: "logged in", token: tokenString})
+}
+
+type jsonLoginResponse struct {
+    result      string  `json:"result"`
+    token       string  `json:"token"`
+}
+
+func newLoginHandler(db *db.DB, s *utils.Signer) loginHanlder{
+    return loginHanlder {db: db, jwtSigner: s }
+}
+
+// Available handler
+
+type availableHandler struct {
+    db      *db.DB
+}
+
+type availablePostJson struct {
+    name    string  `json: "name"`
+}
+
+func newAvailableHandler (db *db.DB) availableHandler {
+    return availableHandler{db: db}
+}
+
+func (h availableHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
+    var data availablePostJson
+        
+    if err := json.NewDecoder(request.Body).Decode(&data); err != nil {
+        // Cannot read json
+        http.Error(response, "Cannot read json", 400)
+        return
+    }
+    
+    // Check that the name is at least 4 character long
+    if len(data.name) < 4 {
+        http.Error(response, "The min length of the name is 4 charactes", 400)
+        return
+    }
+    
+    // Check if a user with this name already exist
+    encoder := json.NewEncoder(response)
+    if h.db.ExistUser(data.name) {
+        encoder.Encode(jsonAvailableResponse{available: false})
+    } else {
+        encoder.Encode(jsonAvailableResponse{available: false})
+    }
+}
+
+type jsonAvailableResponse struct {
+    available   bool `json:"available"`
+}
+
+// Check handler
+type checkHandler struct{
+    db          *db.DB
+    jwtSigner   *utils.Signer
+}
+
+func newCheckHandler(db *db.DB, signer *utils.Signer) checkHandler {
+    return checkHandler{db: db, jwtSigner: signer}
+}
+
+func (l checkHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
+    userToken := context.Get(request, "user")
+    
+    tokenInformations := userToken.(*jwt.Token).Claims
+    
+    valid := l.db.CheckSession(tokenInformations["id"].(int64), tokenInformations["c"].(string))
+    
+    if !valid {
+        http.Error(response, "Invalid Token", 401)
+        return
+    }
+    
+    // If the token is valid let's generate a new one
+    token := utils.SessionToken {
+        UserId: string(tokenInformations["id"].(int64)),
+        Code: string(rand.Int63()),
+        SessionType: tokenInformations["t"].(string),
+    }
+    
+    // Sign the token
+    tokenString, err := l.jwtSigner.Sign(token)
+    
+    if err != nil {
+        http.Error(response, "Internal server error", 500)
+        return
+    }
+    
+    // Save the token
+    err = l.db.UpdateSessionCode(tokenInformations["id"].(int64), tokenInformations["t"].(string), token.Code)
     
     if err != nil {
         http.Error(response, "Internal server error", 500)
@@ -248,20 +257,20 @@ type jsonCheckResponse struct {
 }
 
 // Logout handler
-type LogoutHandler struct {
+type logoutHandler struct {
     db      *db.DB
 }
 
-func NewLogoutHandler(db *db.DB) LogoutHandler {
-    return LogoutHandler{db: db}
+func newLogoutHandler(db *db.DB) logoutHandler {
+    return logoutHandler{db: db}
 }
 
-func (l LogoutHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
+func (l logoutHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
     userToken := context.Get(request, "user")
     
-    tokenInformations := user.(*jwt.Token).Claims
+    tokenInformations := userToken.(*jwt.Token).Claims
     
-    err := db.InvalidateSession(tokenInformation["id"], tokenInformation["c"])
+    err := l.db.InvalidateSession(tokenInformations["id"].(int64), tokenInformations["c"].(string))
     
     if err != nil {
         http.Error(response, "Invalid Token", 401)

@@ -9,6 +9,8 @@ type DB struct {
     *sqlx.DB
 }
 
+type Hash [20]byte
+
 // Create a new DB used to amnage the data of the server
 func NewDB (db *sqlx.DB) *DB {
     
@@ -19,7 +21,7 @@ func NewDB (db *sqlx.DB) *DB {
 
 type User struct {
     Id              int64
-    PasswordHash    string
+    Password        []byte
     Email           string
     Name            string
 }
@@ -27,7 +29,7 @@ type User struct {
 // Create a new user. If a user with the same name already
 // a new error is returner, otherwise is returned the id
 // of the new user
-func (db *DB) CreateUser (name, mail, passwordHash string) (int64, error) {
+func (db *DB) CreateUser (name, mail string, passwordHash []byte) (int64, error) {
     // Check already exists a user with this name
     exist := db.ExistUser(name)
     
