@@ -117,4 +117,3 @@ func (c *MyConn) StartEndlessListening () {
         }
     } ()
 }
-
