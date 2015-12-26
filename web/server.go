@@ -5,9 +5,9 @@ import (
     "github.com/gorilla/mux"
     "github.com/auth0/go-jwt-middleware"
     "github.com/dgrijalva/jwt-go"
-    "goboxserver/main/db"
+    "goboxserver/db"
     "net/http"
-    "goboxserver/main/utils"
+    "goboxserver/utils"
 )
 
 type Server struct {
@@ -24,14 +24,15 @@ func NewServer (db *db.DB) *Server {
     signer := utils.NewSigner("aVeryStrongPiwiSecret")
     
     // Crete the HTTP root (/) router
-    mainRouter := mux.NewRouter()
+    mainRouter := mux.NewRouter().PathPrefix("/api").Subrouter()
     
     // Login and Registration Handlar have their own router
     user := mainRouter.PathPrefix("/user").Subrouter()
     
+    
 	user.Handle("/login", newLoginHandler(db, signer))
 	user.Handle("/availble", newAvailableHandler(db))
-	user.Handle("/signup", newSignupHandler(db))
+	user.Handle("/signup", newSignupHandler(db)).Methods("POST")
 	
 	// Check a token and create a new one
 	user.Handle("/check", negroni.New (
@@ -44,10 +45,9 @@ func NewServer (db *db.DB) *Server {
 	    negroni.Wrap(newLogoutHandler(db))))
 	
 	// The part of the server that manage the ws connections has his own router
-    wsSubRouter := mainRouter.PathPrefix("/ws").Subrouter()
     
     // Create the ws Manager
-    wsmanager := NewWSManager(db, wsSubRouter)
+    wsmanager := NewWSManager(db, mainRouter)
     
     // Return the server
     return &Server {

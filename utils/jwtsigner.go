@@ -5,11 +5,11 @@ import (
 )
 
 type Signer struct {
-    secret  string
+    secret  []byte
 }
 
 func NewSigner (secret string) *Signer {
-    return &Signer{secret: secret}
+    return &Signer{secret: []byte(secret)}
 }
 
 type SessionToken struct {

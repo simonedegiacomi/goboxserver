@@ -1,11 +1,11 @@
 package web
 
 import (
-    "github.com/gorilla/websocket"
-    "goboxserver/main/db"
+    "goboxserver/db"
     "github.com/gorilla/mux"
+    "net/http"
     "io"
-    "goboxserver/common/mywebsocket"
+    "goboxserver/mywebsocket"
 )
 
 type WSManager struct {
@@ -27,29 +27,34 @@ func NewWSManager (db *db.DB, router *mux.Router) *WSManager {
         router: router,
     }
     
+    wsRouter := router.PathPrefix("/ws").Subrouter()
+    transferRouter := router.PathPrefix("/transfer").Subrouter()
+    
     // Create the ws manager for the server.
-    serverWSManager := mywebsocket.NewWSManager(manager.serverReceptioner)
-    router.Handle("/server", serverWSManager)
+    serverWSManager := mywebsocket.NewManager(manager.serverReceptioner)
+    wsRouter.Handle("/server", serverWSManager)
     
     // And the same things for the client ws manager
-    clientWSManager := mywebsocket.NewWSManager(manager.clientRceprioner)
-    router.Handle("/client", clientWSManager)
+    clientWSManager := mywebsocket.NewManager(manager.clientReceptioner)
+    wsRouter.Handle("/client", clientWSManager)
     
     // The file transfer router
-    asp.Handle("/toClient", manager.toClientHandler)
-    asp.Handle("/toPersonalServer", manager.toServerHandler)
+    transferRouter.Handle("/toClient", manager.toClientHandler)
+    transferRouter.Handler("/fromStorage", manager.fromStorageHandler)
+    transferRouter.Handle("/toStorage", manager.toServerHandler)
+    transferRouter.Handle("/fromClient", manager.fromClientHandler)
     
     return manager
 }
 
-type HidentityCardJson struct {
-    ID              int64   `json:"ID"`
-    TokenString     string  `json:"token"`
+type identityCardJson struct {
+    ID              int64 `json:"ID"`
+    TokenString     string `json:"token"`
 }
 
-func (m *wsManager) serverReceptioner (server MyConn) (*interface{}, bool) {
+func (m *WSManager) serverReceptioner (server mywebsocket.MyConn) (*interface{}, bool) {
     // Read the server credentials
-    who := identityCard{}
+    who := identityCardJson{}
     err := server.ReadJSON(&who)
     if err != nil {
         return nil, false
@@ -75,7 +80,7 @@ func (m *wsManager) serverReceptioner (server MyConn) (*interface{}, bool) {
     // Launch the routine that will read the request and the data from the server
     go func () {
         // Create a channel that will contains the readers from the ps
-        reader := make(chan)
+        reader := make(chan(io.Reader))
         // And launch an other go routine to read the incoming data and sending
         // that data to the reader channel
         go func () {
@@ -95,12 +100,12 @@ func (m *wsManager) serverReceptioner (server MyConn) (*interface{}, bool) {
                     // Incoming data from the personal server. First check if is
                     // for me o for the clients
                     var incoming jsonIncomingData
-                    json.NewDecoder(response).Decode(&incoming)
-                    if incoming.forMainServer {
+                    json.NewDecoder(incoming).Decode(&incoming)
+                    if incoming.forServer {
                         // Do something...
                     } else {
                         // Send to the client
-                        ps.response <- response
+                        ps.response <- incoming
                     }
             }
         }
@@ -117,7 +122,13 @@ func (m *wsManager) serverReceptioner (server MyConn) (*interface{}, bool) {
     return nil, true
 }
 
-func (m *wsManager) clientReceptioner (client MyConn) (*interface{}, bool) {
+type jsonIncomingData struct {
+    Event       string `json:"event"`
+    ForServer   bool `json:"forServer"`
+    Data        map[string]interface{} `json:"data"`
+}
+
+func (m *WSManager) clientReceptioner (client mywebsocket.MyConn) (*interface{}, bool) {
     // Read the identity of the client
     who := identityCard{}
     err := client.ReadJSON(&who)
@@ -145,24 +156,4 @@ func (m *wsManager) clientReceptioner (client MyConn) (*interface{}, bool) {
     } ()
     
     return nil, true
-}
-
-//fromClientToServer map
-
-func toServerHandler (response http.ResponseWriter, request *http.Request) {
-    // Get the client id from the query string
-    servers[id].Send("Vieni a prendere il file")
-}
-
-func fromServerHandler () {
-    fromClientToServer
-}
-
-func toClientHandler (response http.ResponseWriter, request *http.Request) {
-    // Get the client id from the query string
-}
-
-
-func fromClientHandler () {
-    
 }

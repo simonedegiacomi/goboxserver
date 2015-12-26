@@ -3,8 +3,9 @@ package main
 import (
     "github.com/jmoiron/sqlx"
     _ "github.com/go-sql-driver/mysql"
-    "goboxserver/main/db"
-    "goboxserver/main/web"
+    "fmt"
+    "goboxserver/db"
+    "goboxserver/web"
 )
 
 func main () {
@@ -13,5 +14,6 @@ func main () {
     // Create the GoBox Main Server
     server := web.NewServer(db)
     // And listen
+    fmt.Println("Server running")
     server.ListenAndServer("localhost:8081")
 }
