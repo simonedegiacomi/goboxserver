@@ -2,7 +2,6 @@ package db
 
 import (
     "errors"
-    "fmt"
     "github.com/jmoiron/sqlx"   
 )
 
@@ -27,7 +26,7 @@ type User struct {
 }
 
 // Create a new user. If a user with the same name already
-// a new error is returner, otherwise is returned the id
+// a new error is returned, otherwise is returned the id
 // of the new user
 func (db *DB) CreateUser (newUser *User) error {
     // Check already exists a user with this name
@@ -41,24 +40,29 @@ func (db *DB) CreateUser (newUser *User) error {
     res, err := db.NamedExec(`INSERT INTO user (name, mail, password)
         VALUES (:name, :mail, :password)`, newUser)
     
+    // If there was an error while inserting the user, return it
     if err != nil {
         return err
     }
     
     // Get the user id
     id, err := res.LastInsertId()
+    
     // Save the id in the user struct
     newUser.Id = id
-    // return the error
-    return err
+    
+    // Return any error
+    return nil
 }
 
 // Given a name, return all the informations about the user
 func (db *DB) GetUser (name string) (*User, error) {
     // Create a USer to hold the information
     var user User
+    
     // Get the informations of the user
     err := db.Get(&user, "SELECT * FROM user WHERE name=?", name)
+    
     // Return the filled user
     return &user, err
 }
@@ -75,41 +79,52 @@ func (db *DB) ExistUser (name string) bool {
     return err == nil
 }
 
+// Struct that contains the session informations
+type Session struct {
+    UserId      int64 `db:"user_ID"`
+    UserAgent   string `db:"user_agent"`
+    CodeHash    []byte `db:"code"`
+    SessionType string `db:"type"`
+}
+
 // Create a new session for the user
-func (db *DB) CreateSession (userId int64, userAgent, sessionType string, tokenHash []byte) error {
+func (db *DB) CreateSession (newSession *Session) error {
     // Insert in the databasde the row of rappresenting the new session
-    fmt.Printf("Creo la sessione di %v (%v)", userId, tokenHash)
-    _, err := db.Exec("INSERT INTO session (user_ID, user_agent, code, type) VALUES (?, ?, ?, ?)",
-        userId, userAgent, tokenHash, sessionType)
+    _, err := db.NamedExec(`INSERT INTO session (user_ID, user_agent, code, type)
+        VALUES (:user_ID, :user_agent, :code, :type)`, newSession)
     
+    // If there was any error, return it
     return err
 }
 
 // Invalidate a user session,. deleting the data from the database
-func (db *DB) InvalidateSession (userId int64, tokenHash []byte) error {
+func (db *DB) InvalidateSession (session *Session) error {
     // Delete only the session of that user with that code
-    _, err := db.Exec("DELETE FROM session WHERE user_ID = ? AND code = ? AND type = ?",
-        userId, tokenHash)
+    _, err := db.NamedExec(`DELETE FROM session 
+        WHERE user_ID = :user_ID AND code = :code AND type = :type`, session)
+    
     // Return the error, maybe that sessions doesn't exist
     return err
 }
 
 // Check if the given session is valid or not
-func (db *DB) CheckSession (userId int64, tokenHash []byte, tokenType string) bool {
-    fmt.Printf("Controllo la sessione di %v (%v)", userId, tokenHash)
+func (db *DB) CheckSession (session *Session) bool {
     // Query the database
     var id int64
-    err := db.Get(&id, "SELECT ID FROM session WHERE user_ID = ? AND code = ?", userId, tokenHash)
+    err := db.Get(&id, `SELECT ID FROM session 
+        WHERE user_ID = ? AND code = ? AND type = ?`, session.UserId,
+        session.CodeHash, session.SessionType)
         
     // If there is an error that row doesn't exist, so the session is not valid
     return err == nil
 }
 
 // Update a session
-func (db *DB) UpdateSessionCode (userId int64, oldToken, newToken []byte) error {
+func (db *DB) UpdateSessionCode (session *Session, newCode []byte) error {
     // Update only the session of this user, with this old code
     _, err := db.Exec("UPDATE session SET code = ? WHERE user_ID = ? AND code = ?",
-        newToken, userId, oldToken)
+        newCode, session.UserId, session.CodeHash)
+        
     // Return eny error
     return err
 }

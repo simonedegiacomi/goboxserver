@@ -11,8 +11,10 @@ import (
 func main () {
     // Connect to the database
     db := db.NewDB(sqlx.MustConnect("mysql", "simonedegiacomi@/gbms"))
+    
     // Create the GoBox Main Server
     server := web.NewServer(db)
+    
     // And listen
     fmt.Println("Server running")
     server.ListenAndServer("localhost:8081")

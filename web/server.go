@@ -8,20 +8,29 @@ import (
     "goboxserver/db"
     "net/http"
     "goboxserver/utils"
+    "goboxserver/web/handlers"
 )
 
 type Server struct {
-    db      *db.DB
-    router  *mux.Router
+    db          *db.DB
+    router      *mux.Router
+    bridger     *Bridger
+    jwtSecret   []byte
 }
 
-// Create the new HTTP server
+// Create a new GoBox server
 func NewServer (db *db.DB) *Server {
+    server := Server {
+        db: db,
+        jwtSecret: []byte("aVeryStrongPiwiSecret"),
+    }
+    
     // Create the middleware thet will read and evalutate the tokens
-    jwtMiddleware := newJWTMiddleware()
+    // on the 'Authorization' HTTP Header
+    jwtMiddleware := server.newJWTMiddleware()
     
     // Create the jwt signer
-    signer := utils.NewSigner("aVeryStrongPiwiSecret")
+    ejwt := utils.NewEasyJWT(server.jwtSecret[0:])
     
     // Crete the HTTP root (/) router
     mainRouter := mux.NewRouter().PathPrefix("/api").Subrouter()
@@ -29,47 +38,54 @@ func NewServer (db *db.DB) *Server {
     // Login and Registration Handlar have their own router
     user := mainRouter.PathPrefix("/user").Subrouter()
     
-    
-	user.Handle("/login", newLoginHandler(db, signer))
-	user.Handle("/availble", newAvailableHandler(db))
-	user.Handle("/signup", newSignupHandler(db)).Methods("POST")
+    // Register the login handler, used to generate a new session
+    // gived the username and the password
+	user.Handle("/login", handlers.NewLoginHandler(db, ejwt))
 	
-	// Check a token and create a new one
+	// Register the signup handler
+	user.Handle("/signup", handlers.NewSignupHandler(db)).Methods("POST")
+	
+	// Register the Handle that check a token and create a new one
+	// This handler muyst be accessible only if the reqiest contains
+	// a valid jwt, so i register a ne wnegroni middlware that read the
+	// token, add the parsed object tot the request context and then call
+	// the check handler
 	user.Handle("/check", negroni.New (
 	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
-	    negroni.Wrap(newCheckHandler(db, signer))))
+	    negroni.Wrap(handlers.NewCheckHandler(db, ejwt))))
 	
-	// Invalidate a token
+	// Invalidate a token, same authorization of the check handler
 	user.Handle("/logout", negroni.New(
 	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
-	    negroni.Wrap(newLogoutHandler(db))))
+	    negroni.Wrap(handlers.NewLogoutHandler(db))))
 	
 	// The part of the server that manage the ws connections has his own router
     
-    // Create the ws Manager
-    wsmanager := NewWSManager(db, mainRouter)
+    // Create the bridger (bridge manager)
+    bridger := NewBridger(db, mainRouter, ejwt)
     
-    // Return the server
-    return &Server {
-        db: db,
-        router: mainRouter,
-    }
+    // Save the bridger inside the server
+    server.bridger = bridger
+    
+    // Return the pointer to the server
+    return &server;
 }
 
 // Start the server
-func (s *Server) ListenAndServer (address string) {
-    http.ListenAndServe(address, s.router)
+func (s *Server) ListenAndServer (address string) error {
+    return http.ListenAndServe(address, s.router)
 }
 
 
-// Create a new default jwt middleware
-func newJWTMiddleware () *jwtmiddleware.JWTMiddleware {
+// Create a new default jwt middleware that read, parse and
+// check the token in the HTTP header
+func (s *Server) newJWTMiddleware () *jwtmiddleware.JWTMiddleware {
     
     // Create a new jwtmiddlewre
     return jwtmiddleware.New(jwtmiddleware.Options{
         // Function used to retrive the key used to sign the token
         ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
-          return []byte("aVeryStrongPiwiSecret"), nil
+          return s.jwtSecret, nil
         },
         
         // When set, the middleware verifies that tokens are signed with the specific signing algorithm
