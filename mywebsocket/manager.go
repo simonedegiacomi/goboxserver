@@ -3,6 +3,7 @@ package mywebsocket
 import (
     "github.com/gorilla/websocket"
     "sync"
+    "errors"
     "io"
     "fmt"
     "net/http"
@@ -11,12 +12,12 @@ import (
 // This Struct is a object used to accept incoming connections
 type Manager struct {
     upgrader        websocket.Upgrader
-    receptioner     func(MyConn)(interface{}, bool)
+    receptioner     func(*MyConn)(interface{}, bool)
     listeners       map[string]EventListener
 }
 
 // Create a new manager for incoming ws connections
-func NewManager (receptioner func(MyConn)(interface{}, bool)) *Manager {
+func NewManager (receptioner func(*MyConn)(interface{}, bool)) *Manager {
     return &Manager {
         upgrader: websocket.Upgrader{
             ReadBufferSize:  1024,
@@ -43,6 +44,8 @@ type MyConn struct {
 // the receptioner to check if the client is ok
 func (m *Manager) ServeHTTP (response http.ResponseWriter, request *http.Request) {
     // Upgrade the http call to websocket
+    // SECURITY ISSUE!!!!!!
+    request.Header.Set("Sec-Websocket-Version", "13")
     ws, err := m.upgrader.Upgrade(response, request, nil)
     
     // Check if there was an error
@@ -52,7 +55,7 @@ func (m *Manager) ServeHTTP (response http.ResponseWriter, request *http.Request
     }
     
     // Create the object for this connection
-    conn := MyConn {
+    conn := &MyConn {
         ws: ws,
         wlock: &sync.Mutex{},
         rlock: &sync.Mutex{},
@@ -101,7 +104,11 @@ func (c *MyConn) Send (event string, data interface{}) error {
     return c.ws.WriteJSON(message{Event: event, Data: data})
 }
 
+
 func (c *MyConn) Write (reader io.Reader) error {
+    if reader == nil {
+        return errors.New("nil reader")
+    }
     c.wlock.Lock()
     defer c.wlock.Unlock()
     writer, err := c.ws.NextWriter(websocket.TextMessage)
@@ -127,6 +134,12 @@ func (c *MyConn) ReadJSON (v interface{}) error {
 func (c *MyConn) NextReader () (io.Reader, error) {
     _, reader, err := c.ws.NextReader()
     return reader, err
+}
+
+func (c *MyConn) Ping () {
+    c.wlock.Lock()
+    c.ws.WriteMessage(websocket.PingMessage, []byte{})
+    c.wlock.Unlock()
 }
 
 // Start the dedicated go routine listening for the registered events. You cannot

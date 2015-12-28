@@ -3,9 +3,10 @@ package web
 import (
     "goboxserver/db"
     "encoding/json"
+    "time"
     "github.com/gorilla/mux"
     "strconv"
-    "io"
+    "fmt"
     "crypto/sha1"
     "goboxserver/mywebsocket"
     "goboxserver/utils"
@@ -56,27 +57,43 @@ func NewBridger (db *db.DB, router *mux.Router, ejwt *utils.EasyJWT) *Bridger {
 // This struct contains the channel used to cominicate with the storage
 // and to receive the responses
 type Storage struct {
-    request     chan(io.Reader)
-    response    chan(jsonIncomingData)
+    // This channel contains the reader of the clients, that
+    // needs to be sended to the storage
+    toStorage       chan(jsonIncomingData)
+    
+    // This channel contains the message incoming from the storage. Not
+    // all message, but only the request of a single client request
+    fromStorage     chan(jsonIncomingData)
+    
+    // This slice contains all the client connected to this
+    // storage
+    clients         []Client
+}
+
+type Client struct {
+    ws      *mywebsocket.MyConn
 }
 
 // Json of the data trasmitted in the websockets
 type jsonIncomingData struct {
     // Name of the event
-    Event       string `json:"event"`
-    // Flag used to indicate if that request is for THIS server
-    ForServer   bool `json:"forServer"`
+    Event               string `json:"event"`
+    // Flag used to indicate if that message is for THIS server
+    ForServer           bool `json:"forServer"`
+    // Flag used to indicate if that message if for all clients
+    BroadcastClients    bool `json:"broadcast"`
     // Data of the message, is a json object.
     // Is a map of interface only for convenience (instad of defining
     // every go struct)
-    Data        map[string]interface{} `json:"data"`
+    Data                map[string]interface{} `json:"data"`
 }
 
 // This handler receive the incoming connections from the storages
-func (m *Bridger) serverReceptioner (server mywebsocket.MyConn) (interface{}, bool) {
+func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface{}, bool) {
+    fmt.Println("OK")
     // Read the server credentials
     who := jsonIncomingData{}
-    err := server.ReadJSON(&who)
+    err := storageConn.ReadJSON(&who)
     if err != nil {
         return nil, false
     }
@@ -114,44 +131,65 @@ func (m *Bridger) serverReceptioner (server mywebsocket.MyConn) (interface{}, bo
     
     // Create the storage manager
     storage := &Storage{
-        request: make(chan(io.Reader)),
-        response: make(chan(jsonIncomingData)),
+        toStorage: make(chan(jsonIncomingData), 10),
+        fromStorage: make(chan(jsonIncomingData), 10),
+        clients: make([]Client, 10),
     }
     
     // Launch the routine that will read the request and the data from the server
     go func () {
-        // Create a channel that will contains the readers from the ps
-        reader := make(chan(io.Reader))
+        // Create a channel that will contains the readers from the storage
+        readerFromStorage := make(chan(jsonIncomingData), 10)
         // And launch an other go routine to read the incoming data and sending
         // that data to the reader channel
         go func () {
             for {
-                r, err := server.NextReader()
+                r, err := storageConn.NextReader()
                 if err != nil {
                     // I need to ahndle this
+                    fmt.Println(err)
+                    return
                 }
-                reader <- r
+                var incoming jsonIncomingData
+                err = json.NewDecoder(r).Decode(&incoming)
+                fmt.Println(err)
+                readerFromStorage <- incoming
             }
         } ()
+        
         // Then the loop that will read from the server channel or the
         // request channel
+        ticker := time.NewTicker(30 * time.Second)
         for {
             select {
-                case request := <- storage.request:
+                case fromClient := <- storage.toStorage:
+                    fmt.Println("Go ruotine del storage ha ricevuto da client channel")
                     // Incoming data from one of the clients
-                    // So just send it to the server
-                    server.Write(request)
-                case response := <- reader:
-                    // Incoming data from the personal server. First check if is
-                    // for me o for the clients
-                    var incoming jsonIncomingData
-                    json.NewDecoder(response).Decode(&incoming)
+                    // So just send it to the storage
+                    storageConn.Send(fromClient.Event, fromClient.Data)
+                case incoming := <- readerFromStorage:
+                    // Incoming data from the personal server.
+                    // Parse the json
+                    fmt.Println("Incoming from server")
+                    fmt.Println(incoming.Event)
+                    
                     if incoming.ForServer {
-                        // Do something...
+                        // The json is for me
+                        fmt.Println("new message for me")
+                    } else if incoming.BroadcastClients {
+                        // The json is for all clients, so i send it to all the
+                        // clients of this this storage
+                        for _, client := range storage.clients {
+                            // Invio il pacchetto
+                            client.ws.Send(incoming.Event, incoming.Data)
+                        }
                     } else {
-                        // Send to the client
-                        storage.response <- incoming
+                        // The json is for the client that made
+                        // the last request
+                        storage.fromStorage <- incoming
                     }
+                case <-ticker.C:
+        			storageConn.Ping()
             }
         }
     } ()
@@ -167,10 +205,11 @@ func (m *Bridger) serverReceptioner (server mywebsocket.MyConn) (interface{}, bo
     return nil, true
 }
 
-func (m *Bridger) clientReceptioner (client mywebsocket.MyConn) (interface{}, bool) {
+func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{}, bool) {
+    fmt.Println("OK")
     // Read the identity of the client
     who := jsonIncomingData{}
-    err := client.ReadJSON(&who)
+    err := clientConn.ReadJSON(&who)
     if err != nil {
         return nil, false
     }
@@ -208,18 +247,42 @@ func (m *Bridger) clientReceptioner (client mywebsocket.MyConn) (interface{}, bo
 
     // Check if his storage is connected
     
-    server, connected := m.storages[id]
+    storage, connected := m.storages[id]
+    clientConn.Send("storageInfo", map[string]bool {"connected": connected})
     if !connected {
-        client.Send("storageInfo", map[string]bool {"connected": false})
         return nil, false
     }
+    
+    client := Client{
+        ws: clientConn,
+    }
+    
+    storage.clients = append(storage.clients, client)
+
+    go func () {
+        ticker := time.NewTicker(30 * time.Second)
+        for {
+            <- ticker.C
+        	clientConn.Ping()
+        }
+    } ()
 
     go func () {
         for {
-            reader, _ := client.NextReader()
-            server.request <- reader
-            jsonResponse := <- server.response
-            client.Send(jsonResponse.Event, jsonResponse.Data)
+            reader, err := clientConn.NextReader()
+            if err != nil {
+                fmt.Println(err)
+                return
+            }
+            var incoming jsonIncomingData
+            json.NewDecoder(reader).Decode(&incoming)
+            fmt.Println("Incoming from client")
+            storage.toStorage <- incoming
+            fmt.Println("Incoming from client incanalato")
+            jsonResponse := <- storage.fromStorage
+            fmt.Println("Risposta dal server ricevute")
+            clientConn.Send(jsonResponse.Event, jsonResponse.Data)
+            fmt.Println("Risposta inviata al client")
         }
     } ()
     // keep the connection

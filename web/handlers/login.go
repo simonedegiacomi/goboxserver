@@ -70,6 +70,7 @@ func (l *LoginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Re
     token := utils.SessionToken {
         UserId: strconv.FormatInt(userInfo.Id, 10),
         Code: strconv.FormatInt(rand.Int63(), 10),
+        SessionType: data.LoginType,
     }
     
     // Sign the token with the secret
@@ -110,6 +111,5 @@ func (l *LoginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Re
     json.NewEncoder(response).Encode(loginResponse{
         Result: "logged in",
         Token: tokenString,
-        
     })
 }

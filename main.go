@@ -17,5 +17,5 @@ func main () {
     
     // And listen
     fmt.Println("Server running")
-    server.ListenAndServer("localhost:8081")
+    fmt.Println(server.ListenAndServer("localhost:8081"))
 }

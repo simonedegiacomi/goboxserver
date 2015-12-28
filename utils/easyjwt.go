@@ -12,7 +12,7 @@ type EasyJWT struct {
 // Return a new signer gived the secret. This signer
 // use the HS256 method.
 func NewEasyJWT (secret []byte) *EasyJWT {
-    return &EasyJWT{secret}
+    return &EasyJWT{secret: secret}
 }
 
 // Struct tha t holds the token informations

@@ -20,7 +20,7 @@ type Server struct {
 
 // Create a new GoBox server
 func NewServer (db *db.DB) *Server {
-    server := Server {
+    server := &Server{
         db: db,
         jwtSecret: []byte("aVeryStrongPiwiSecret"),
     }
@@ -35,12 +35,15 @@ func NewServer (db *db.DB) *Server {
     // Crete the HTTP root (/) router
     mainRouter := mux.NewRouter().PathPrefix("/api").Subrouter()
     
+    // Save the main router in the server object
+    server.router = mainRouter
+    
     // Login and Registration Handlar have their own router
     user := mainRouter.PathPrefix("/user").Subrouter()
     
     // Register the login handler, used to generate a new session
     // gived the username and the password
-	user.Handle("/login", handlers.NewLoginHandler(db, ejwt))
+	user.Handle("/login", handlers.NewLoginHandler(db, ejwt)).Methods("POST")
 	
 	// Register the signup handler
 	user.Handle("/signup", handlers.NewSignupHandler(db)).Methods("POST")
@@ -68,7 +71,7 @@ func NewServer (db *db.DB) *Server {
     server.bridger = bridger
     
     // Return the pointer to the server
-    return &server;
+    return server;
 }
 
 // Start the server
