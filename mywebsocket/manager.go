@@ -95,7 +95,7 @@ type message struct {
 // Write to the client. This function call be called from multiple goroutines
 // at the same time, it's automaticaly block the goroutines until the message
 // is send
-func (c *MyConn) Send (event string, data interface{}) error {
+func (c *MyConn) SendEvent (event string, data interface{}) error {
     // Lock the connection, so any routines can write
     c.wlock.Lock()
     // Unlock the lock to let the other goroutine write
@@ -103,6 +103,15 @@ func (c *MyConn) Send (event string, data interface{}) error {
     // Write
     return c.ws.WriteJSON(message{Event: event, Data: data})
 }
+
+func (c *MyConn) SendJSON (json interface{}) error {
+    // Lock the connection, so any routines can write
+    c.wlock.Lock()
+    // Unlock the lock to let the other goroutine write
+    defer c.wlock.Unlock()
+    // Write
+    return c.ws.WriteJSON(json)
+} 
 
 
 func (c *MyConn) Write (reader io.Reader) error {

@@ -11,6 +11,7 @@ import (
     "goboxserver/web/handlers"
 )
 
+// Struct that contains the obejct used by the server
 type Server struct {
     db          *db.DB
     router      *mux.Router
@@ -55,13 +56,16 @@ func NewServer (db *db.DB) *Server {
 	// the check handler
 	user.Handle("/check", negroni.New (
 	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
+	    negroni.HandlerFunc(db.AuthMiddleware),
 	    negroni.Wrap(handlers.NewCheckHandler(db, ejwt))))
 	
 	// Invalidate a token, same authorization of the check handler
 	user.Handle("/logout", negroni.New(
 	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
+	    negroni.HandlerFunc(db.AuthMiddleware),
 	    negroni.Wrap(handlers.NewLogoutHandler(db))))
 	
+	user.Handle("/image/{id:[0-9]+}", handlers.NewImageHandler(db).GetHandler)
 	// The part of the server that manage the ws connections has his own router
     
     // Create the bridger (bridge manager)
@@ -88,7 +92,8 @@ func (s *Server) newJWTMiddleware () *jwtmiddleware.JWTMiddleware {
     return jwtmiddleware.New(jwtmiddleware.Options{
         // Function used to retrive the key used to sign the token
         ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
-          return s.jwtSecret, nil
+            
+            return s.jwtSecret, nil
         },
         
         // When set, the middleware verifies that tokens are signed with the specific signing algorithm

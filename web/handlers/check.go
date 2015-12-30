@@ -26,6 +26,7 @@ func NewCheckHandler(db *db.DB, ejwt *utils.EasyJWT) *CheckHandler {
 
 // Serve the HTTP request
 func (l *CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
+    
     // Get the token parsed by the jwt middleware
     userToken := context.Get(request, "user")
     
@@ -48,16 +49,6 @@ func (l *CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Re
         UserId: id,
         CodeHash: codeHash[0:],
         SessionType: tokenInformations["t"].(string),
-    }
-    
-    // Check if the session is valid
-    valid := l.db.CheckSession(&session)
-    
-    // If the session is not valid...
-    if !valid {
-        // ... the client is not authorized
-        http.Error(response, "Invalid Token", 401)
-        return
     }
     
     // If the token is valid let's generate a new one
@@ -92,10 +83,12 @@ func (l *CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Re
     json.NewEncoder(response).Encode(checkResponse{
         State: "valid",
         NewOne: tokenString,
+        Id: id,
     })
 }
 
 type checkResponse struct {
     State   string `json:"state"`
     NewOne  string `json:"newOne"`
+    Id      int64 `json:"id"`
 }

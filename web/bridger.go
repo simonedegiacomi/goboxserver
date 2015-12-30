@@ -7,6 +7,7 @@ import (
     "github.com/gorilla/mux"
     "strconv"
     "fmt"
+    "github.com/codegangsta/negroni"
     "crypto/sha1"
     "goboxserver/mywebsocket"
     "goboxserver/utils"
@@ -19,7 +20,7 @@ type Bridger struct {
     db          *db.DB
     router      *mux.Router
     ejwt        *utils.EasyJWT
-    storages    map[int64]*Storage
+    storages    map[int64]Storage
 }
 
 // Create a new bridger
@@ -29,13 +30,14 @@ func NewBridger (db *db.DB, router *mux.Router, ejwt *utils.EasyJWT) *Bridger {
         db: db,
         router: router,
         ejwt: ejwt,
-        storages: make(map[int64]*Storage),
+        storages: make(map[int64]Storage),
     }
     
     // The router of the websockets
     wsRouter := router.PathPrefix("/ws").Subrouter()
+    
     // The router for the requests used to share the files
-    //transferRouter := router.PathPrefix("/transfer").Subrouter()
+    transferRouter := router.PathPrefix("/transfer").Subrouter()
     
     // Create the ws manager for the storages.
     serverWSManager := mywebsocket.NewManager(bridger.serverReceptioner)
@@ -45,11 +47,26 @@ func NewBridger (db *db.DB, router *mux.Router, ejwt *utils.EasyJWT) *Bridger {
     clientWSManager := mywebsocket.NewManager(bridger.clientReceptioner)
     wsRouter.Handle("/client", clientWSManager)
     
+    // This register the two handler used to upload a file from the client
+    // to the storage
     
-    //transferRouter.Handle("/toClient", bridger.toClientHandler)
-    //transferRouter.Handler("/fromStorage", bridger.fromStorageHandler)
-    //transferRouter.Handle("/toStorage", bridger.toServerHandler)
-    //transferRouter.Handle("/fromClient", bridger.fromClientHandler)
+    // This one catch the request from the client
+    toStorageHandler := bridger.NewToStorageHandler()
+    transferRouter.Handle("/toStorage", negroni.New(
+        negroni.HandlerFunc(db.AuthMiddleware),
+        negroni.Wrap(toStorageHandler)))
+    // This catch the request from the storage
+    transferRouter.Handle("/fromClient", bridger.NewFromClientHandler(toStorageHandler))
+    
+    
+    fromStorageHandler := bridger.NewFromStorageHandler()
+    
+    
+    transferRouter.Handle("/fromStorage", fromStorageHandler)
+    transferRouter.Handle("/toClient", bridger.NewtoClientHandler(fromStorageHandler))
+    
+    
+    
     
     return bridger
 }
@@ -86,11 +103,12 @@ type jsonIncomingData struct {
     // Is a map of interface only for convenience (instad of defining
     // every go struct)
     Data                map[string]interface{} `json:"data"`
+    // The id of te qury, ignored by this server
+    QueryId             string `json:"_queryId"`
 }
 
 // This handler receive the incoming connections from the storages
 func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface{}, bool) {
-    fmt.Println("OK")
     // Read the server credentials
     who := jsonIncomingData{}
     err := storageConn.ReadJSON(&who)
@@ -130,7 +148,7 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
     }
     
     // Create the storage manager
-    storage := &Storage{
+    storage := Storage{
         toStorage: make(chan(jsonIncomingData), 10),
         fromStorage: make(chan(jsonIncomingData), 10),
         clients: make([]Client, 10),
@@ -166,7 +184,7 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
                     fmt.Println("Go ruotine del storage ha ricevuto da client channel")
                     // Incoming data from one of the clients
                     // So just send it to the storage
-                    storageConn.Send(fromClient.Event, fromClient.Data)
+                    storageConn.SendJSON(fromClient)
                 case incoming := <- readerFromStorage:
                     // Incoming data from the personal server.
                     // Parse the json
@@ -181,7 +199,7 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
                         // clients of this this storage
                         for _, client := range storage.clients {
                             // Invio il pacchetto
-                            client.ws.Send(incoming.Event, incoming.Data)
+                            client.ws.SendEvent(incoming.Event, incoming.Data)
                         }
                     } else {
                         // The json is for the client that made
@@ -248,7 +266,7 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
     // Check if his storage is connected
     
     storage, connected := m.storages[id]
-    clientConn.Send("storageInfo", map[string]bool {"connected": connected})
+    clientConn.SendEvent("storageInfo", map[string]bool {"connected": connected})
     if !connected {
         return nil, false
     }
@@ -276,13 +294,13 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
             }
             var incoming jsonIncomingData
             json.NewDecoder(reader).Decode(&incoming)
-            fmt.Println("Incoming from client")
+            //fmt.Println("Incoming from client")
             storage.toStorage <- incoming
-            fmt.Println("Incoming from client incanalato")
+            //fmt.Println("Incoming from client incanalato")
             jsonResponse := <- storage.fromStorage
-            fmt.Println("Risposta dal server ricevute")
-            clientConn.Send(jsonResponse.Event, jsonResponse.Data)
-            fmt.Println("Risposta inviata al client")
+            //fmt.Println("Risposta dal server ricevute")
+            clientConn.SendJSON(jsonResponse)
+            //fmt.Println("Risposta inviata al client")
         }
     } ()
     // keep the connection

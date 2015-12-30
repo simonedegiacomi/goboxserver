@@ -23,6 +23,7 @@ type User struct {
     Password        []byte `db:"password"`
     Email           string `db:"mail"`
     Name            string `db:"name"`
+    Image           string `db:"image"`
 }
 
 // Create a new user. If a user with the same name already
