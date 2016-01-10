@@ -65,6 +65,15 @@ func (l *LoginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Re
         response.WriteHeader(401)
         return
     }
+    
+    // If the clients wants to authenticate as storage, check that there's no
+    // other storages connected to this account
+    //if strings.Compare(data.LoginType, "S") == 0 {
+    //    if hasStorage := db.HasStorage(userInfo); hasStorage {
+    //        json.NewEncoder(response).Encode(map[string]string{"result": "Storage already registered"})
+    //        return
+    //    }
+    //}
         
     // Generate a new token for the session
     token := utils.SessionToken {

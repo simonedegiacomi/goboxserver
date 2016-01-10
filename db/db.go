@@ -88,6 +88,17 @@ type Session struct {
     SessionType string `db:"type"`
 }
 
+func (db *DB) HasStorage (user *User) bool {
+    var id int64
+    
+    // Query the database
+    err := db.Get(&id, `SELECT ID FROM session
+        WHERE user_ID = ? AND type = 'S'`, user.Id)
+        
+    // If there was an error the user haven't a storage yet
+    return err != nil
+}
+
 // Create a new session for the user
 func (db *DB) CreateSession (newSession *Session) error {
     // Insert in the databasde the row of rappresenting the new session

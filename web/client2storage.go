@@ -40,6 +40,11 @@ func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *htt
     // Parse the used id
     id, _ := strconv.ParseInt(tokenInformations["id"].(string), 10, 64)
     
+    // Now get the informations of the new file from the query string
+    // in the url
+    queryParams := request.URL.Query()
+    
+    
     // Tell the storage to come here to catch the http request
     
     // I can manually write to the websocket, or use the channel
@@ -60,10 +65,25 @@ func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *htt
     // add the transfer tot he map
     h.uploads[uploadKey] = transfer
     
-    // Semd the message to the storage using his dedicated channel
+    
+    // Create tha map that contains the information of the new file
+    fileInformations := make(map[string]interface{})
+    
+    // Just copy the informations... i thinks there is a
+    // better way
+    fileInformations["name"] = queryParams.Get("name")
+    fileInformations["size"] = queryParams.Get("size")
+    fileInformations["creation"] = queryParams.Get("creation")
+    fileInformations["lastUpdate"] = queryParams.Get("lastUpdate")
+    
+    // And then  add the uploadKey value 
+    fileInformations["uploadKey"] = uploadKey
+    
+    
+    // Send the message to the storage using his dedicated channel
     h.storages[id].toStorage <- jsonIncomingData{
         Event: "comeToGetTheFile",
-        Data: map[string]interface{} {"uploadKey": uploadKey, "name": "prova.txt", "father": 0},
+        Data: fileInformations,
     }
     
     // Lock this routine until the file is sent

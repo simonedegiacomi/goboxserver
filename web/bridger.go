@@ -170,7 +170,7 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
                 }
                 var incoming jsonIncomingData
                 err = json.NewDecoder(r).Decode(&incoming)
-                fmt.Println(err)
+                //fmt.Println(err)
                 readerFromStorage <- incoming
             }
         } ()
@@ -181,19 +181,19 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
         for {
             select {
                 case fromClient := <- storage.toStorage:
-                    fmt.Println("Go ruotine del storage ha ricevuto da client channel")
+                    //fmt.Println("Go ruotine del storage ha ricevuto da client channel")
                     // Incoming data from one of the clients
                     // So just send it to the storage
                     storageConn.SendJSON(fromClient)
                 case incoming := <- readerFromStorage:
                     // Incoming data from the personal server.
                     // Parse the json
-                    fmt.Println("Incoming from server")
-                    fmt.Println(incoming.Event)
+                    //fmt.Println("Incoming from server")
+                    //fmt.Println(incoming.Event)
                     
                     if incoming.ForServer {
                         // The json is for me
-                        fmt.Println("new message for me")
+                        //fmt.Println("new message for me")
                     } else if incoming.BroadcastClients {
                         // The json is for all clients, so i send it to all the
                         // clients of this this storage
@@ -289,7 +289,7 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
         for {
             reader, err := clientConn.NextReader()
             if err != nil {
-                fmt.Println(err)
+                //fmt.Println(err)
                 return
             }
             var incoming jsonIncomingData
