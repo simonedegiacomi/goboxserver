@@ -75,6 +75,10 @@ func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *htt
     fileInformations["size"] = queryParams.Get("size")
     fileInformations["creation"] = queryParams.Get("creation")
     fileInformations["lastUpdate"] = queryParams.Get("lastUpdate")
+    fileInformations["isDirectory"] = queryParams.Get("isDirectory")
+    fileInformations["path"] = queryParams.Get("path")
+    fmt.Printf("Path from url: %v\n", queryParams.Get("path"))
+    fileInformations["fatherId"] = queryParams.Get("fatherId")
     
     // And then  add the uploadKey value 
     fileInformations["uploadKey"] = uploadKey

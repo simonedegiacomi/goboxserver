@@ -1,3 +1,5 @@
+// Created by Degiacomi Simone
+
 package utils
 
 // Function used to compare the password hash

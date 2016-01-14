@@ -1,3 +1,5 @@
+// Created by Degiacomi Simone
+
 package mywebsocket
 
 import (
@@ -96,6 +98,9 @@ type message struct {
 // at the same time, it's automaticaly block the goroutines until the message
 // is send
 func (c *MyConn) SendEvent (event string, data interface{}) error {
+    
+    fmt.Printf("Sto per inviare l'evento %v con data %v\n", event, data)
+    
     // Lock the connection, so any routines can write
     c.wlock.Lock()
     // Unlock the lock to let the other goroutine write

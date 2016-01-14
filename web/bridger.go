@@ -11,6 +11,7 @@ import (
     "crypto/sha1"
     "goboxserver/mywebsocket"
     "goboxserver/utils"
+    "github.com/auth0/go-jwt-middleware"
 )
 
 // The pridger manage the ws connection between the clients and
@@ -24,7 +25,7 @@ type Bridger struct {
 }
 
 // Create a new bridger
-func NewBridger (db *db.DB, router *mux.Router, ejwt *utils.EasyJWT) *Bridger {
+func NewBridger (db *db.DB, router *mux.Router, ejwt *utils.EasyJWT, jwtMiddle *jwtmiddleware.JWTMiddleware) *Bridger {
     // Create the object that contains the object used
     bridger := &Bridger {
         db: db,
@@ -53,6 +54,7 @@ func NewBridger (db *db.DB, router *mux.Router, ejwt *utils.EasyJWT) *Bridger {
     // This one catch the request from the client
     toStorageHandler := bridger.NewToStorageHandler()
     transferRouter.Handle("/toStorage", negroni.New(
+        negroni.HandlerFunc(jwtMiddle.HandlerWithNext),
         negroni.HandlerFunc(db.AuthMiddleware),
         negroni.Wrap(toStorageHandler)))
     // This catch the request from the storage
@@ -109,6 +111,8 @@ type jsonIncomingData struct {
 
 // This handler receive the incoming connections from the storages
 func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface{}, bool) {
+    fmt.Println("Server connected")
+    
     // Read the server credentials
     who := jsonIncomingData{}
     err := storageConn.ReadJSON(&who)
@@ -188,8 +192,7 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
                 case incoming := <- readerFromStorage:
                     // Incoming data from the personal server.
                     // Parse the json
-                    //fmt.Println("Incoming from server")
-                    //fmt.Println(incoming.Event)
+                    fmt.Printf("Incoming from server %v \n", incoming.Event)
                     
                     if incoming.ForServer {
                         // The json is for me
@@ -224,7 +227,7 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
 }
 
 func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{}, bool) {
-    fmt.Println("OK")
+    fmt.Println("Client connected")
     // Read the identity of the client
     who := jsonIncomingData{}
     err := clientConn.ReadJSON(&who)

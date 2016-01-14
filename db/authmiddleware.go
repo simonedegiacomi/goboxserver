@@ -1,3 +1,11 @@
+// Created by Degiacomi Simone
+
+/*
+    Package db provides some functions that made
+    easilier comunicate with the database, letting
+    you to mak eonly the query used in gobox server
+*/
+
 package db
 
 import (

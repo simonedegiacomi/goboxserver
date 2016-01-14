@@ -69,7 +69,7 @@ func NewServer (db *db.DB) *Server {
 	// The part of the server that manage the ws connections has his own router
     
     // Create the bridger (bridge manager)
-    bridger := NewBridger(db, mainRouter, ejwt)
+    bridger := NewBridger(db, mainRouter, ejwt, jwtMiddleware)
     
     // Save the bridger inside the server
     server.bridger = bridger
