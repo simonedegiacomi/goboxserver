@@ -14,7 +14,7 @@ import (
     "github.com/auth0/go-jwt-middleware"
 )
 
-// The pridger manage the ws connection between the clients and
+// The bridger manage the ws connection between the clients and
 // the storages and manage the incoming http request used to
 // share files between the devices.
 type Bridger struct {
@@ -60,15 +60,11 @@ func NewBridger (db *db.DB, router *mux.Router, ejwt *utils.EasyJWT, jwtMiddle *
     // This catch the request from the storage
     transferRouter.Handle("/fromClient", bridger.NewFromClientHandler(toStorageHandler))
     
-    
+    // This catch the request from the client
     fromStorageHandler := bridger.NewFromStorageHandler()
-    
     
     transferRouter.Handle("/fromStorage", fromStorageHandler)
     transferRouter.Handle("/toClient", bridger.NewtoClientHandler(fromStorageHandler))
-    
-    
-    
     
     return bridger
 }
@@ -155,7 +151,6 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
     storage := Storage{
         toStorage: make(chan(jsonIncomingData), 10),
         fromStorage: make(chan(jsonIncomingData), 10),
-        clients: make([]Client, 10),
     }
     
     // Launch the routine that will read the request and the data from the server
@@ -168,13 +163,13 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
             for {
                 r, err := storageConn.NextReader()
                 if err != nil {
-                    // I need to ahndle this
+                    // I need to handle this
                     fmt.Println(err)
                     return
                 }
                 var incoming jsonIncomingData
                 err = json.NewDecoder(r).Decode(&incoming)
-                //fmt.Println(err)
+                fmt.Printf("From server: %v (error: %v)\n", incoming, err)
                 readerFromStorage <- incoming
             }
         } ()
@@ -201,6 +196,7 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
                         // The json is for all clients, so i send it to all the
                         // clients of this this storage
                         for _, client := range storage.clients {
+                            
                             // Invio il pacchetto
                             client.ws.SendEvent(incoming.Event, incoming.Data)
                         }
@@ -223,6 +219,7 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
     // much better approach to handle this situation
     
     m.storages[id] = storage
+    
     return nil, true
 }
 

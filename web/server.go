@@ -49,6 +49,9 @@ func NewServer (db *db.DB) *Server {
 	// Register the signup handler
 	user.Handle("/signup", handlers.NewSignupHandler(db)).Methods("POST")
 	
+	// Exist user handler
+	user.Handle("/exist", handlers.NewExistHandler(db)).Methods("GET")
+	
 	// Register the Handle that check a token and create a new one
 	// This handler muyst be accessible only if the reqiest contains
 	// a valid jwt, so i register a ne wnegroni middlware that read the
