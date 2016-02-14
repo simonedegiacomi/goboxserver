@@ -20,7 +20,7 @@ type Server struct {
 }
 
 // Create a new GoBox server
-func NewServer (db *db.DB) *Server {
+func NewServer (db *db.DB, urls map[string]string) *Server {
     server := &Server{
         db: db,
         jwtSecret: []byte("aVeryStrongPiwiSecret"),
@@ -47,7 +47,8 @@ func NewServer (db *db.DB) *Server {
 	user.Handle("/login", handlers.NewLoginHandler(db, ejwt)).Methods("POST")
 	
 	// Register the signup handler
-	user.Handle("/signup", handlers.NewSignupHandler(db)).Methods("POST")
+	signup, _ := handlers.NewSignupHandler(db, urls)
+	user.Handle("/signup", signup).Methods("POST")
 	
 	// Exist user handler
 	user.Handle("/exist", handlers.NewExistHandler(db)).Methods("GET")
