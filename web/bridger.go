@@ -2,7 +2,6 @@ package web
 
 import (
     "goboxserver/db"
-    "encoding/json"
     "time"
     "github.com/gorilla/mux"
     "strconv"
@@ -21,7 +20,7 @@ type Bridger struct {
     db          *db.DB
     router      *mux.Router
     ejwt        *utils.EasyJWT
-    storages    map[int64]Storage
+    storages    map[int64]*Storage
 }
 
 // Create a new bridger
@@ -31,7 +30,7 @@ func NewBridger (db *db.DB, router *mux.Router, ejwt *utils.EasyJWT, jwtMiddle *
         db: db,
         router: router,
         ejwt: ejwt,
-        storages: make(map[int64]Storage),
+        storages: make(map[int64]*Storage),
     }
     
     // The router of the websockets
@@ -58,13 +57,23 @@ func NewBridger (db *db.DB, router *mux.Router, ejwt *utils.EasyJWT, jwtMiddle *
         negroni.HandlerFunc(db.AuthMiddleware),
         negroni.Wrap(toStorageHandler)))
     // This catch the request from the storage
-    transferRouter.Handle("/fromClient", bridger.NewFromClientHandler(toStorageHandler))
+    transferRouter.Handle("/fromClient", negroni.New(
+        negroni.HandlerFunc(jwtMiddle.HandlerWithNext),
+        negroni.HandlerFunc(db.AuthMiddleware),
+        negroni.Wrap(bridger.NewFromClientHandler(toStorageHandler))))
     
     // This catch the request from the client
     fromStorageHandler := bridger.NewFromStorageHandler()
     
-    transferRouter.Handle("/fromStorage", fromStorageHandler)
-    transferRouter.Handle("/toClient", bridger.NewtoClientHandler(fromStorageHandler))
+    transferRouter.Handle("/fromStorage", negroni.New(
+        negroni.HandlerFunc(jwtMiddle.HandlerWithNext),
+        negroni.HandlerFunc(db.AuthMiddleware),
+        negroni.Wrap(fromStorageHandler)))
+        
+    transferRouter.Handle("/toClient", negroni.New(
+        negroni.HandlerFunc(jwtMiddle.HandlerWithNext),
+        negroni.HandlerFunc(db.AuthMiddleware),
+        negroni.Wrap(bridger.NewtoClientHandler(fromStorageHandler))))
     
     return bridger
 }
@@ -107,7 +116,7 @@ type jsonIncomingData struct {
 
 // This handler receive the incoming connections from the storages
 func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface{}, bool) {
-    fmt.Println("Server connected")
+    fmt.Println("A new storage is trying to initialize a bridge")
     
     // Read the server credentials
     who := jsonIncomingData{}
@@ -129,7 +138,7 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
         return nil, false
     }
     
-    // Parse the id from (from string to int)
+    // Parse the id (from string to int)
     id, err := strconv.ParseInt(token.UserId, 10, 64)
     if err != nil {
         return nil, false
@@ -151,6 +160,7 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
     storage := Storage{
         toStorage: make(chan(jsonIncomingData), 10),
         fromStorage: make(chan(jsonIncomingData), 10),
+        clients: make([]Client, 0),
     }
     
     // Launch the routine that will read the request and the data from the server
@@ -161,15 +171,16 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
         // that data to the reader channel
         go func () {
             for {
-                r, err := storageConn.NextReader()
-                if err != nil {
-                    // I need to handle this
-                    fmt.Println(err)
+                var incoming jsonIncomingData
+                if err := storageConn.ReadJSON(&incoming); err != nil {
+                    // Notfy this error to all the clients of this storage
+                    
+                    // And then remove from the map
+                    delete(m.storages, id)
+                    fmt.Println("Storage disconnected")
                     return
                 }
-                var incoming jsonIncomingData
-                err = json.NewDecoder(r).Decode(&incoming)
-                fmt.Printf("From server: %v (error: %v)\n", incoming, err)
+                
                 readerFromStorage <- incoming
             }
         } ()
@@ -187,16 +198,15 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
                 case incoming := <- readerFromStorage:
                     // Incoming data from the personal server.
                     // Parse the json
-                    fmt.Printf("Incoming from server %v \n", incoming.Event)
                     
                     if incoming.ForServer {
                         // The json is for me
-                        //fmt.Println("new message for me")
+                        fmt.Println("New message for me")
                     } else if incoming.BroadcastClients {
+                        
                         // The json is for all clients, so i send it to all the
                         // clients of this this storage
                         for _, client := range storage.clients {
-                            
                             // Invio il pacchetto
                             client.ws.SendEvent(incoming.Event, incoming.Data)
                         }
@@ -218,7 +228,9 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
     // moving the map into the database can help, but i'm sure that there's a
     // much better approach to handle this situation
     
-    m.storages[id] = storage
+    m.storages[id] = &storage
+    
+    fmt.Println("New storage connected")
     
     return nil, true
 }
@@ -236,8 +248,11 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
     token, err := m.ejwt.Validate(who.Data["token"].(string))
     
     if err != nil {
+        clientConn.SendEvent("authentication", map[string]bool { "result": false })
         return nil, false
     }
+    
+    clientConn.SendEvent("authentication", map[string]bool { "result": true })
     
     // Calculate the hash of the code
     codeHash := sha1.Sum([]byte(token.Code))
@@ -245,7 +260,7 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
         return nil, false
     }
     
-    // Parse the id from (from string to int)
+    // // Parse the id from (from string to int)
     id, err := strconv.ParseInt(token.UserId, 10, 64)
     if err != nil {
         return nil, false
@@ -253,9 +268,9 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
     
     // Create the db session
     session := db.Session{
-        UserId: id,
-        CodeHash: codeHash[0:],
-        SessionType: "C",
+         UserId: id,
+         CodeHash: codeHash[0:],
+         SessionType: "C",
     }
     
     // Check if is valid
@@ -266,6 +281,7 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
     // Check if his storage is connected
     
     storage, connected := m.storages[id]
+    
     clientConn.SendEvent("storageInfo", map[string]bool {"connected": connected})
     if !connected {
         return nil, false
@@ -284,25 +300,29 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
         	clientConn.Ping()
         }
     } ()
-
+    
     go func () {
         for {
-            reader, err := clientConn.NextReader()
-            if err != nil {
-                //fmt.Println(err)
+            var incoming jsonIncomingData
+            if err := clientConn.ReadJSON(&incoming); err != nil {
+                // In this case the client is disconnected
+                fmt.Println("Client disconnected")
+                
+                // TODO: Remove this client from the array on the storage obj
                 return
             }
-            var incoming jsonIncomingData
-            json.NewDecoder(reader).Decode(&incoming)
-            //fmt.Println("Incoming from client")
+            
             storage.toStorage <- incoming
-            //fmt.Println("Incoming from client incanalato")
             jsonResponse := <- storage.fromStorage
-            //fmt.Println("Risposta dal server ricevute")
-            clientConn.SendJSON(jsonResponse)
-            //fmt.Println("Risposta inviata al client")
+            err = clientConn.SendJSON(jsonResponse)
+            if err != nil {
+                fmt.Printf("Error: %v\n", err)
+            }
         }
     } ()
+    
+    fmt.Println("New client connected")
+    
     // keep the connection
     return nil, true
 }

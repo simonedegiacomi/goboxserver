@@ -68,8 +68,13 @@ func NewServer (db *db.DB, urls map[string]string) *Server {
 	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
 	    negroni.HandlerFunc(db.AuthMiddleware),
 	    negroni.Wrap(handlers.NewLogoutHandler(db))))
+	    
+	// Change password handler
+	user.Handle("/changePassword", negroni.New(
+	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
+	    negroni.Wrap(handlers.NewChangePasswordHandler(db))))
 	
-	user.Handle("/image/{id:[0-9]+}", handlers.NewImageHandler(db).GetHandler)
+	user.Handle("/image/{username}", handlers.NewImageHandler(db).GetHandler)
 	// The part of the server that manage the ws connections has his own router
     
     // Create the bridger (bridge manager)
@@ -104,5 +109,11 @@ func (s *Server) newJWTMiddleware () *jwtmiddleware.JWTMiddleware {
         // If the signing method is not constant the ValidationKeyGetter callback can be used to implement additional checks
         // Important to avoid security issues described here: https://auth0.com/blog/2015/03/31/critical-vulnerabilities-in-json-web-token-libraries/
         SigningMethod: jwt.SigningMethodHS256,
+        
+        // Extractor, used for retrive the jwt string. I need to catch the string from the queryString
+        // for the 'fromStorage' handler
+        // TODO: Get the jwt string only for the 'fromStorage' handlre
+        Extractor: jwtmiddleware.FromFirst(jwtmiddleware.FromAuthHeader,
+            jwtmiddleware.FromParameter("jwt")),
     })
 }

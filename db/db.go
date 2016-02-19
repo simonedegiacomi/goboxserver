@@ -142,3 +142,9 @@ func (db *DB) UpdateSessionCode (session *Session, newCode []byte) error {
     // Return eny error
     return err
 }
+
+func (db *DB) ChangePassword (user *User, newPassword []byte) error {
+    _, err := db.Exec("UPDATE user SET password = ? WHERE ID = ? AND password = ?", newPassword, user.Id, user.Password)
+    
+    return err
+}

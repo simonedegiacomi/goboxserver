@@ -22,8 +22,8 @@ type Manager struct {
 func NewManager (receptioner func(*MyConn)(interface{}, bool)) *Manager {
     return &Manager {
         upgrader: websocket.Upgrader{
-            ReadBufferSize:  1024,
-            WriteBufferSize: 1024,
+            //ReadBufferSize:  24,
+            //WriteBufferSize: 24000,
             CheckOrigin: func(r *http.Request) bool {
                 return true
             },
@@ -46,8 +46,6 @@ type MyConn struct {
 // the receptioner to check if the client is ok
 func (m *Manager) ServeHTTP (response http.ResponseWriter, request *http.Request) {
     // Upgrade the http call to websocket
-    // SECURITY ISSUE!!!!!!
-    request.Header.Set("Sec-Websocket-Version", "13")
     ws, err := m.upgrader.Upgrade(response, request, nil)
     
     // Check if there was an error
@@ -114,6 +112,7 @@ func (c *MyConn) SendJSON (json interface{}) error {
     c.wlock.Lock()
     // Unlock the lock to let the other goroutine write
     defer c.wlock.Unlock()
+    
     // Write
     return c.ws.WriteJSON(json)
 } 
@@ -155,16 +154,3 @@ func (c *MyConn) Ping () {
     c.ws.WriteMessage(websocket.PingMessage, []byte{})
     c.wlock.Unlock()
 }
-
-// Start the dedicated go routine listening for the registered events. You cannot
-// call 'ReadJSON' anymore, if you do, that goroutine will be locked forever
-// func (c *MyConn) StartEndlessListening () {
-//     c.rlock.Lock() // Lock the reading of this connections
-//     go func () {
-//         for {
-//             _, reader, err := c.ws.NextReader()
-            
-//             // Read the first part of the json to understand the event
-//         }
-//     } ()
-// }

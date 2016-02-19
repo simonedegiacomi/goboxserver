@@ -11,7 +11,7 @@ import (
     "regexp"
 )
 
-// The signup handler depends only by the database
+// The signup handler depends by the database and the key for the reCaptcha validation
 type SignupHandler struct {
     db                      *db.DB
     urls                    map[string]string

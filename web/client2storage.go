@@ -7,12 +7,12 @@ import (
     "strconv"
     "github.com/dgrijalva/jwt-go"
     "encoding/json"
-    "fmt"
     "io"
+    "fmt"
 )
 
 type toStorageHandler struct {
-    storages    map[int64]Storage
+    storages    map[int64]*Storage
     uploads     map[string]upload
 }
 
@@ -30,6 +30,7 @@ func (b *Bridger) NewToStorageHandler () *toStorageHandler {
 
 // Catch the incoming connection from the client, tell the storage
 // to come and pass to it the connection
+// AKA fromClient
 func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
     
     // Get the token parsed by the jwt middleware
@@ -37,7 +38,7 @@ func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *htt
     
     // Get the informations contained inside the jwt
     tokenInformations := userToken.(*jwt.Token).Claims
-    // Parse the used id
+    // Parse the user id
     id, _ := strconv.ParseInt(tokenInformations["id"].(string), 10, 64)
     
     // Now get the informations of the new file from the query string
@@ -62,25 +63,16 @@ func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *htt
         file: request.Body,
     }
 
-    // add the transfer tot he map
+    // add the transfer to the map
     h.uploads[uploadKey] = transfer
     
-    
     // Create tha map that contains the information of the new file
-    fileInformations := make(map[string]interface{})
+    var fileInformations map[string]interface{}
+    if err := json.Unmarshal([]byte(queryParams.Get("json")), &fileInformations); err != nil {
+        http.Error(response, "Invalid json", 400)
+    }
     
-    // Just copy the informations... i thinks there is a
-    // better way
-    fileInformations["name"] = queryParams.Get("name")
-    fileInformations["size"] = queryParams.Get("size")
-    fileInformations["creation"] = queryParams.Get("creation")
-    fileInformations["lastUpdate"] = queryParams.Get("lastUpdate")
-    fileInformations["isDirectory"] = queryParams.Get("isDirectory")
-    fileInformations["path"] = queryParams.Get("path")
-    fmt.Printf("Path from url: %v\n", queryParams.Get("path"))
-    fileInformations["fatherId"] = queryParams.Get("fatherId")
-    
-    // And then  add the uploadKey value 
+    // And then add the uploadKey value 
     fileInformations["uploadKey"] = uploadKey
     
     
@@ -129,14 +121,14 @@ func (h *fromClientHandler) ServeHTTP (response http.ResponseWriter, request *ht
     
     // If the transfer doesn't exist close the request
     if !exist {
-        http.Error(response, "Dafuq?", 400)
+        http.Error(response, "No transfer found", 400)
         return
     }
     
     // Copy in the response of THIS response the boody of the CLIENT request
     bytes, err := io.Copy(response, transfer.file)
     
-    fmt.Printf("Bytes transfered: %v error: %v\n", bytes, err)
+    fmt.Println("Transfer %v bytes", bytes)
     
     // Unlock the other goroutine
     transfer.done <- true

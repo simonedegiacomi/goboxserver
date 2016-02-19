@@ -11,7 +11,7 @@ import (
 )
 
 type fromStorageHandler struct {
-    storages    map[int64]Storage
+    storages    map[int64]*Storage
     downloads   map[string]download
 }
 
@@ -46,9 +46,16 @@ func (h *fromStorageHandler) ServeHTTP (response http.ResponseWriter, request *h
         out: response,
     }
     
+    queryParams := request.URL.Query()
+    
+    h.downloads[downloadKey] = transfer
+    
     h.storages[id].toStorage <- jsonIncomingData{
         Event: "sendMeTheFile",
-        Data: map[string]interface{} {"downloadKey": downloadKey},
+        Data: map[string]interface{} { "downloadKey": downloadKey,
+            "ID": queryParams.Get("ID"),
+            "authorized": true,
+        },
     }
     
     <- transfer.done
@@ -68,15 +75,19 @@ func (h *toClientHandler) ServeHTTP (response http.ResponseWriter, request *http
     // Get the 'downloadKey' from the url queryParams
     downloadKey := request.URL.Query().Get("downloadKey")
     
+    fmt.Println("A storag ewants to serve " + downloadKey)
+    
     if len(downloadKey) <= 0 {
         http.Error(response, "Error while parsing the parameters", 400)
         return;
     }
     
+    
     // Get the transfer
     transfer, exist := h.downloads[downloadKey];
     
     if !exist {
+        fmt.Println("But the key is invalid")
         http.Error(response, "No download request found", 400)
         return
     }

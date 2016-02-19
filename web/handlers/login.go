@@ -34,8 +34,8 @@ type loginResponse struct {
 }
 
 // Create a new login handler
-func NewLoginHandler(db *db.DB, ejwt *utils.EasyJWT) *LoginHanlder{
-    return &LoginHanlder{db: db, ejwt: ejwt}
+func NewLoginHandler(db *db.DB, ejwt *utils.EasyJWT) *LoginHanlder {
+    return &LoginHanlder{ db: db, ejwt: ejwt}
 }
 
 // This is the 'core' of the handler, where the http request is handled

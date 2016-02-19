@@ -24,10 +24,10 @@ func NewImageHandler (db *db.DB) *ImageHandler {
             
             // Get the id of the user
             params := mux.Vars(request)
-            id, err := strconv.ParseInt(params["id"], 10, 64)
+            username := params["username"]
             
             // Check if is valid
-            if err != nil {
+            if username == "" {
                 http.Error(response, "Invalid Request", 400)
                 return
             }
@@ -36,7 +36,7 @@ func NewImageHandler (db *db.DB) *ImageHandler {
             response.Header().Set("Content-Type", "image/png");
             
             // Try to open the image
-            image, err := os.Open("images/" + strconv.FormatInt(id, 10))
+            image, err := os.Open("images/" + username)
             
             if err != nil {
                 // If the image doesn't exist, send the
