@@ -28,7 +28,7 @@ func (db *DB) AuthMiddleware (response http.ResponseWriter, request *http.Reques
     id, err := strconv.ParseInt(tokenInformations["id"].(string), 10, 64)
     
     if err != nil {
-        http.Error(response, "Server id conversion error", 501)
+        http.Error(response, "Server error", 501)
         return
     }
     
@@ -48,7 +48,7 @@ func (db *DB) AuthMiddleware (response http.ResponseWriter, request *http.Reques
     // If the session is not valid...
     if !valid {
         // ... the client is not authorized
-        http.Error(response, "Invalid Token", 401)
+        http.Error(response, "Not Authorized", 401)
         return
     }
     

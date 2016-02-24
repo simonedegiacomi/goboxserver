@@ -61,9 +61,9 @@ func (l *ChangePasswordHandler) ServeHTTP (response http.ResponseWriter, request
         Password: oldPasswordHash[0:],
     }
     
-    err = l.db.ChangePassword(&user, newPasswordHash[0:])
+    done, err := l.db.ChangePassword(&user, newPasswordHash[0:])
     
-    if err != nil {
+    if err != nil || !done {
         response.WriteHeader(400)
         return
     }

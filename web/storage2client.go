@@ -24,7 +24,7 @@ func (b *Bridger) NewFromStorageHandler () *fromStorageHandler {
 
 type download struct {
     done    chan(bool)
-    out     http.ResponseWriter
+    response     http.ResponseWriter
 }
 
 func (h *fromStorageHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
@@ -43,7 +43,7 @@ func (h *fromStorageHandler) ServeHTTP (response http.ResponseWriter, request *h
     
     transfer := download{
         done: make(chan(bool)),
-        out: response,
+        response: response,
     }
     
     queryParams := request.URL.Query()
@@ -82,7 +82,6 @@ func (h *toClientHandler) ServeHTTP (response http.ResponseWriter, request *http
         return;
     }
     
-    
     // Get the transfer
     transfer, exist := h.downloads[downloadKey];
     
@@ -92,7 +91,12 @@ func (h *toClientHandler) ServeHTTP (response http.ResponseWriter, request *http
         return
     }
     
-    bytes, err := io.Copy(transfer.out, request.Body)
+    // Set the content type and the size
+    transfer.response.Header().Set("Content-Length", request.Header.Get("Content-Length"))
+    transfer.response.Header().Set("Content-Type", request.Header.Get("Content-Type"))
+    transfer.response.WriteHeader(200)
+    
+    bytes, err := io.Copy(transfer.response, request.Body)
     
     fmt.Printf("Bytes transfered: %v error: %v\n", bytes, err)
     

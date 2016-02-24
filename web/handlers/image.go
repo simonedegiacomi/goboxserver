@@ -59,6 +59,7 @@ func NewImageHandler (db *db.DB) *ImageHandler {
             io.Copy(response, image)
         },
         PostHandler: func (response http.ResponseWriter, request *http.Request) {
+            //request.Header().Get("Content-Type")
         },
     }
 }

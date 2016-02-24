@@ -139,12 +139,18 @@ func (db *DB) UpdateSessionCode (session *Session, newCode []byte) error {
     _, err := db.Exec("UPDATE session SET code = ? WHERE user_ID = ? AND code = ?",
         newCode, session.UserId, session.CodeHash)
         
-    // Return eny error
+    // Return any error
     return err
 }
 
-func (db *DB) ChangePassword (user *User, newPassword []byte) error {
-    _, err := db.Exec("UPDATE user SET password = ? WHERE ID = ? AND password = ?", newPassword, user.Id, user.Password)
+func (db *DB) ChangePassword (user *User, newPassword []byte) (bool, error) {
+    res, err := db.Exec("UPDATE user SET password = ? WHERE ID = ? AND password = ?", newPassword, user.Id, user.Password)
     
-    return err
+    if err != nil {
+        return false, err
+    }
+    
+    n, _ := res.RowsAffected()
+    
+    return n == 1, err
 }

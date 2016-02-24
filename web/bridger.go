@@ -314,10 +314,7 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
             
             storage.toStorage <- incoming
             jsonResponse := <- storage.fromStorage
-            err = clientConn.SendJSON(jsonResponse)
-            if err != nil {
-                fmt.Printf("Error: %v\n", err)
-            }
+            clientConn.SendJSON(jsonResponse)
         }
     } ()
     
