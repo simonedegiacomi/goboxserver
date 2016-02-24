@@ -36,10 +36,11 @@ func NewManager (receptioner func(*MyConn)(interface{}, bool)) *Manager {
 // This struct holds the connection and its info. There's one
 // connection for each ws client
 type MyConn struct {
-    ws      *websocket.Conn
-    Info    interface{}
-    wlock   *sync.Mutex
-    rlock   *sync.Mutex
+    ws          *websocket.Conn
+    Info        interface{}
+    wlock       *sync.Mutex
+    rlock       *sync.Mutex
+    HttpRequest *http.Request
 }
 
 // The function upgrade the http connecction to a websocket one and call
@@ -59,6 +60,7 @@ func (m *Manager) ServeHTTP (response http.ResponseWriter, request *http.Request
         ws: ws,
         wlock: &sync.Mutex{},
         rlock: &sync.Mutex{},
+        HttpRequest: request,
     }
     
     // Ask the bouncer(receptioner) if the client s a good one

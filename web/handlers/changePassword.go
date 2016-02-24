@@ -5,9 +5,7 @@ import (
     "goboxserver/db"
     "net/http"
     "crypto/sha1"
-    "strconv"
     "errors"
-    "github.com/dgrijalva/jwt-go"
     "github.com/gorilla/context"
 )
 
@@ -44,14 +42,8 @@ func (l *ChangePasswordHandler) ServeHTTP (response http.ResponseWriter, request
         return
     }
     
-    // Get the token parsed by the jwt middleware
-    userToken := context.Get(request, "user")
-    
-    // Get the informations contained inside the jwt
-    tokenInformations := userToken.(*jwt.Token).Claims
-    
-    // Parse the used id
-    id, err := strconv.ParseInt(tokenInformations["id"].(string), 10, 64)
+    // Get the user Id
+    id := context.Get(request, "userId").(int64)
     
     newPasswordHash := sha1.Sum([]byte(data.NewPassword))
     oldPasswordHash := sha1.Sum([]byte(data.OldPassword))

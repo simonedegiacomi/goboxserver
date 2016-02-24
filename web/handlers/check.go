@@ -14,7 +14,7 @@ import (
     "crypto/sha1"
 )
 
-// Checl handler need the database and the ejwt. This struct
+// Check handler need the database and the ejwt. This struct
 // holds these objects
 type CheckHandler struct{
     db      *db.DB
@@ -31,22 +31,23 @@ func (l *CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Re
     
     // Get the token parsed by the jwt middleware
     userToken := context.Get(request, "user")
+    _, tokenInCookie := context.GetOk(request, "jwtInCookie")
     
     // Get the informations contained inside the jwt
     tokenInformations := userToken.(*jwt.Token).Claims
     
-    // Parse the used id
+    // Parse the user id
     id, err := strconv.ParseInt(tokenInformations["id"].(string), 10, 64)
     
     if err != nil {
-        http.Error(response, "Server id conversion error", 501)
+        http.Error(response, "Server error", 500)
         return
     }
     
     // Calculate the hash of the random code inside the jwt
     codeHash := sha1.Sum([]byte(tokenInformations["c"].(string)))
     
-    // Create the db session object
+    // Create the new db session object
     session := db.Session{
         UserId: id,
         CodeHash: codeHash[0:],
@@ -65,7 +66,7 @@ func (l *CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Re
     
     // If there was an error, is the server fault
     if err != nil {
-        http.Error(response, "Internal server error", 500)
+        http.Error(response, "Server error", 500)
         return
     }
     
@@ -77,20 +78,32 @@ func (l *CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Re
     
     // Check possible errors..
     if err != nil {
-        http.Error(response, "Internal server error", 500)
+        http.Error(response, "Server error", 500)
         return
     }
     
-    // Send the new token
-    json.NewEncoder(response).Encode(checkResponse{
+    res := checkResponse{
         State: "valid",
-        NewOne: tokenString,
-        Id: id,
-    })
+    }
+    
+    if tokenInCookie {
+        // If the client prefer a cookie, send it
+        authCookie := http.Cookie{
+            Name: "auth",
+            Value: tokenString,
+            Secure: true,
+            HttpOnly: true,
+        }
+        http.SetCookie(response, &authCookie)
+    } else {
+        res.NewOne = tokenString
+    }
+    
+    // Send the new token
+    json.NewEncoder(response).Encode(res)
 }
 
 type checkResponse struct {
     State   string `json:"state"`
     NewOne  string `json:"newOne"`
-    Id      int64 `json:"id"`
 }

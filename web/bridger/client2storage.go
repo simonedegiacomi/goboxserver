@@ -1,11 +1,10 @@
-package web
+package bridger
 
 import (
     "net/http"
     "math/rand"
     "github.com/gorilla/context"
     "strconv"
-    "github.com/dgrijalva/jwt-go"
     "encoding/json"
     "io"
     "fmt"
@@ -33,13 +32,8 @@ func (b *Bridger) NewToStorageHandler () *toStorageHandler {
 // AKA fromClient
 func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
     
-    // Get the token parsed by the jwt middleware
-    userToken := context.Get(request, "user")
-    
-    // Get the informations contained inside the jwt
-    tokenInformations := userToken.(*jwt.Token).Claims
-    // Parse the user id
-    id, _ := strconv.ParseInt(tokenInformations["id"].(string), 10, 64)
+    // Get the user Id
+    id := context.Get(request, "userId").(int64)
     
     // Now get the informations of the new file from the query string
     // in the url

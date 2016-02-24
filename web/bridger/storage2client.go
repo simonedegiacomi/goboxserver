@@ -1,13 +1,12 @@
-package web
+package bridger
 
 import (
     "net/http"
     "math/rand"
-    "github.com/dgrijalva/jwt-go"
     "github.com/gorilla/context"
-    "strconv"
     "fmt"
     "io"
+    "strconv"
 )
 
 type fromStorageHandler struct {
@@ -29,14 +28,8 @@ type download struct {
 
 func (h *fromStorageHandler) ServeHTTP (response http.ResponseWriter, request *http.Request) {
     
-    // Get the token parsed by the jwt middleware
-    userToken := context.Get(request, "user")
-    
-    // Get the informations contained inside the jwt
-    tokenInformations := userToken.(*jwt.Token).Claims
-    
-    // Parse the used id
-    id, _ := strconv.ParseInt(tokenInformations["id"].(string), 10, 64)
+    // Get the user Id
+    id := context.Get(request, "userId").(int64)
     
     // Now i tell the storage to send me the file
     downloadKey := strconv.FormatInt(id, 10) + strconv.FormatInt(rand.Int63(), 10)

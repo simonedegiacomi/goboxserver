@@ -3,27 +3,33 @@ package web
 import (
     "github.com/codegangsta/negroni"
     "github.com/gorilla/mux"
-    "github.com/auth0/go-jwt-middleware"
-    "github.com/dgrijalva/jwt-go"
     "goboxserver/db"
     "net/http"
     "goboxserver/utils"
     "goboxserver/web/handlers"
+    "goboxserver/web/bridger"
+    "io/ioutil"
 )
 
 // Struct that contains the obejct used by the server
 type Server struct {
     db          *db.DB
     router      *mux.Router
-    bridger     *Bridger
+    bridger     *bridger.Bridger
     jwtSecret   []byte
 }
 
 // Create a new GoBox server
-func NewServer (db *db.DB, urls map[string]string) *Server {
+func NewServer (db *db.DB, urls map[string]string) (*Server, error) {
+    jwtSecret, err := ioutil.ReadFile(urls["jwtSecret"])
+    
+    if err != nil {
+        return nil, err
+    }
+    
     server := &Server{
         db: db,
-        jwtSecret: []byte("aVeryStrongPiwiSecret"),
+        jwtSecret: jwtSecret,
     }
     
     // Create the middleware thet will read and evalutate the tokens
@@ -55,9 +61,9 @@ func NewServer (db *db.DB, urls map[string]string) *Server {
 	
 	// Register the Handle that check a token and create a new one
 	// This handler muyst be accessible only if the reqiest contains
-	// a valid jwt, so i register a ne wnegroni middlware that read the
-	// token, add the parsed object tot the request context and then call
-	// the check handler
+	// a valid jwt, so i register a new negroni middlware that read the
+	// token, add the parsed object to the request context. Query the database
+	// and finally call the 'check' handler
 	user.Handle("/check", negroni.New (
 	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
 	    negroni.HandlerFunc(db.AuthMiddleware),
@@ -72,48 +78,22 @@ func NewServer (db *db.DB, urls map[string]string) *Server {
 	// Change password handler
 	user.Handle("/changePassword", negroni.New(
 	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
+	    negroni.HandlerFunc(db.AuthMiddleware),
 	    negroni.Wrap(handlers.NewChangePasswordHandler(db))))
 	
-	user.Handle("/image/{username}", handlers.NewImageHandler(db).GetHandler)
+	// Handler for the user's profiles image
+	user.Handle("/image/{username}", handlers.NewImageHandler(db))
+	
 	// The part of the server that manage the ws connections has his own router
     
     // Create the bridger (bridge manager)
-    bridger := NewBridger(db, mainRouter, ejwt, jwtMiddleware)
-    
-    // Save the bridger inside the server
-    server.bridger = bridger
+    server.bridger = bridger.NewBridger(db, mainRouter, jwtMiddleware)
     
     // Return the pointer to the server
-    return server;
+    return server, nil;
 }
 
-// Start the server
+// This function start listening to the specified port
 func (s *Server) ListenAndServer (address string) error {
     return http.ListenAndServe(address, s.router)
-}
-
-
-// Create a new default jwt middleware that read, parse and
-// check the token in the HTTP header
-func (s *Server) newJWTMiddleware () *jwtmiddleware.JWTMiddleware {
-    
-    // Create a new jwtmiddlewre
-    return jwtmiddleware.New(jwtmiddleware.Options{
-        // Function used to retrive the key used to sign the token
-        ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
-            
-            return s.jwtSecret, nil
-        },
-        
-        // When set, the middleware verifies that tokens are signed with the specific signing algorithm
-        // If the signing method is not constant the ValidationKeyGetter callback can be used to implement additional checks
-        // Important to avoid security issues described here: https://auth0.com/blog/2015/03/31/critical-vulnerabilities-in-json-web-token-libraries/
-        SigningMethod: jwt.SigningMethodHS256,
-        
-        // Extractor, used for retrive the jwt string. I need to catch the string from the queryString
-        // for the 'fromStorage' handler
-        // TODO: Get the jwt string only for the 'fromStorage' handlre
-        Extractor: jwtmiddleware.FromFirst(jwtmiddleware.FromAuthHeader,
-            jwtmiddleware.FromParameter("jwt")),
-    })
 }

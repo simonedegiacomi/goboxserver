@@ -1,5 +1,4 @@
 // Created by Degiacomi Simone
-
 package handlers
 
 import (
@@ -12,7 +11,7 @@ import (
     "crypto/sha1"
 )
 
-// The login handler need  a database and a jwt signer. This
+// The login handler need a database and a jwt signer. This
 // struct holds this informationas
 type LoginHanlder struct {
     db      *db.DB
@@ -25,12 +24,7 @@ type loginJson struct {
     Name        string `json:"username"`
     Password    string `json:"password"`
     LoginType   string `json:"type"`
-}
-
-// Response of the login
-type loginResponse struct {
-    Result      string `json:"result"`
-    Token       string `json:"token"`
+    UseCookie   bool `json:"cookie"`
 }
 
 // Create a new login handler
@@ -44,7 +38,7 @@ func (l *LoginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Re
     var data loginJson
     if err := json.NewDecoder(request.Body).Decode(&data); err != nil {
         // Cannot read json
-        http.Error(response, "Cannot read json", 400)
+        http.Error(response, "Invalid request", 400)
         return
     }
     
@@ -67,15 +61,6 @@ func (l *LoginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Re
         response.WriteHeader(401)
         return
     }
-    
-    // If the clients wants to authenticate as storage, check that there's no
-    // other storages connected to this account
-    //if strings.Compare(data.LoginType, "S") == 0 {
-    //    if hasStorage := db.HasStorage(userInfo); hasStorage {
-    //        json.NewEncoder(response).Encode(map[string]string{"result": "Storage already registered"})
-    //        return
-    //    }
-    //}
         
     // Generate a new token for the session
     token := utils.SessionToken {
@@ -90,7 +75,7 @@ func (l *LoginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Re
     // If there was an error with the sign function, is an error
     // of the server
     if err != nil {
-        http.Error(response, "Internal server error", 500)
+        http.Error(response, "Server error", 500)
         return
     }
     
@@ -114,13 +99,29 @@ func (l *LoginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Re
     
     // If there was an error, is a server fault
     if err != nil {
-        http.Error(response, "Internal server error", 500)
+        http.Error(response, "Server error", 500)
         return
     }
     
+    // Create the response
+    res := map[string]string {
+        "result": "logged in",
+    }
+    
+    if(data.UseCookie) {
+        // If the client prefer a cookie, send it
+        authCookie := http.Cookie{
+            Name: "auth",
+            Value: tokenString,
+            Secure: true,
+            HttpOnly: true,
+        }
+        http.SetCookie(response, &authCookie)
+    } else {
+        // otherwise send the token in the json response
+        res["Token"] = tokenString
+    }
+    
     // Send the token to the client
-    json.NewEncoder(response).Encode(loginResponse{
-        Result: "logged in",
-        Token: tokenString,
-    })
+    json.NewEncoder(response).Encode(res)
 }

@@ -3,6 +3,7 @@ package handlers
 import (
     "net/http"
     "goboxserver/db"
+    "encoding/json"
 )
 
 // This handler check if a user exists
@@ -31,10 +32,10 @@ func (h *ExistHandler) ServeHTTP (response http.ResponseWriter, request *http.Re
         return
     }
     
-    // Check if the user exist in the database
-    if h.db.ExistUser(username) {
-        response.WriteHeader(200)
-    } else {
-        response.WriteHeader(404)
+    res := map[string]bool {
+        "exist": h.db.ExistUser(username),
     }
+    
+    // Send the json response to the client
+    json.NewEncoder(response).Encode(res)
 }

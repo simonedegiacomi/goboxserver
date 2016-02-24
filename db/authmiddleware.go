@@ -24,11 +24,11 @@ func (db *DB) AuthMiddleware (response http.ResponseWriter, request *http.Reques
     // Get the informations contained inside the jwt
     tokenInformations := userToken.(*jwt.Token).Claims
     
-    // Parse the used id
+    // Parse the user id
     id, err := strconv.ParseInt(tokenInformations["id"].(string), 10, 64)
     
     if err != nil {
-        http.Error(response, "Server error", 501)
+        http.Error(response, "Server error", 500)
         return
     }
     
@@ -51,6 +51,10 @@ func (db *DB) AuthMiddleware (response http.ResponseWriter, request *http.Reques
         http.Error(response, "Not Authorized", 401)
         return
     }
+    
+    
+    // Save in the context the id
+    context.Set(request, "userId", id)
     
     next(response, request)
 }
