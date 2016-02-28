@@ -115,11 +115,12 @@ func (l *LoginHanlder) ServeHTTP (response http.ResponseWriter, request *http.Re
             Value: tokenString,
             Secure: true,
             HttpOnly: true,
+            Path: "/",
         }
         http.SetCookie(response, &authCookie)
     } else {
         // otherwise send the token in the json response
-        res["Token"] = tokenString
+        res["token"] = tokenString
     }
     
     // Send the token to the client

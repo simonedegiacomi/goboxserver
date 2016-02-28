@@ -15,8 +15,8 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
     // Create the storage manager
     storage := Storage{
         toStorage: make(chan(jsonIncomingData), 10),
-        fromStorage: make(chan(jsonIncomingData), 10),
         clients: make([]Client, 0),
+        queries: make(map[string]Client),
     }
     
     // Create a channel that will contains the readers from the storage
@@ -67,9 +67,14 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
                             client.ws.SendEvent(incoming.Event, incoming.Data)
                         }
                     } else {
-                        // The json is for the client that made
-                        // the last request
-                        storage.fromStorage <- incoming
+                        
+                        // Get the client that made this query and send it back
+                        // the answer
+                        storage.queries[incoming.QueryId].ws.SendJSON(incoming)
+                        
+                        // Then remove this query id from the map
+                        delete(storage.queries, incoming.QueryId)
+                        
                     }
                 case <-ticker.C:
         			storageConn.Ping()

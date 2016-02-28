@@ -44,6 +44,14 @@ func (l *CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Re
         return
     }
     
+    // Get the username from the database
+    user, err := l.db.GetUserById(id)
+    
+    if err != nil {
+        http.Error(response, "Server error", 500)
+        return
+    }
+    
     // Calculate the hash of the random code inside the jwt
     codeHash := sha1.Sum([]byte(tokenInformations["c"].(string)))
     
@@ -84,6 +92,7 @@ func (l *CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Re
     
     res := checkResponse{
         State: "valid",
+        Username: user.Name,
     }
     
     if tokenInCookie {
@@ -93,6 +102,7 @@ func (l *CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Re
             Value: tokenString,
             Secure: true,
             HttpOnly: true,
+            Path: "/",
         }
         http.SetCookie(response, &authCookie)
     } else {
@@ -104,6 +114,7 @@ func (l *CheckHandler) ServeHTTP (response http.ResponseWriter, request *http.Re
 }
 
 type checkResponse struct {
-    State   string `json:"state"`
-    NewOne  string `json:"newOne"`
+    State       string `json:"state"`
+    NewOne      string `json:"newOne"`
+    Username    string `json:"username"`
 }

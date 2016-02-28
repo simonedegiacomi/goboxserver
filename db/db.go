@@ -60,11 +60,22 @@ func (db *DB) CreateUser (newUser *User) error {
 
 // Given a name, return all the informations about the user
 func (db *DB) GetUser (name string) (*User, error) {
-    // Create a USer to hold the information
+    // Create a User to hold the information
     var user User
     
     // Get the informations of the user
     err := db.Get(&user, "SELECT * FROM user WHERE name=?", name)
+    
+    // Return the filled user
+    return &user, err
+}
+
+func (db *DB) GetUserById (id int64) (*User, error) {
+    // Create a User to hold the information
+    var user User
+    
+    // Get the informations of the user
+    err := db.Get(&user, "SELECT * FROM user WHERE id=?", id)
     
     // Return the filled user
     return &user, err

@@ -84,13 +84,13 @@ type Storage struct {
     // needs to be sended to the storage
     toStorage       chan(jsonIncomingData)
     
-    // This channel contains the message incoming from the storage. Not
-    // all message, but only the request of a single client request
-    fromStorage     chan(jsonIncomingData)
-    
     // This slice contains all the client connected to this
     // storage
     clients         []Client
+    
+    // This map contains the pending queries. The key is the query id and the
+    // value is the client that made that query
+    queries         map[string]Client
 }
 
 type Client struct {

@@ -54,10 +54,7 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
             // If the message of the client is a query, the client
             // pretends a response
             if(incoming.QueryId != "") {
-                // Wait for the response from the storage
-                jsonResponse := <- storage.fromStorage
-                // Send the response to the client
-                clientConn.SendJSON(jsonResponse)
+                storage.queries[incoming.QueryId] = client
             }
         }
     } ()
