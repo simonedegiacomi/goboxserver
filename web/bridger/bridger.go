@@ -1,6 +1,7 @@
 package bridger
 
 import (
+    "sync"
     "goboxserver/db"
     "github.com/gorilla/mux"
     "github.com/codegangsta/negroni"
@@ -84,6 +85,10 @@ type Storage struct {
     // needs to be sended to the storage
     toStorage       chan(jsonIncomingData)
     
+    // This lock is used tio synchronize goroutines when the clients
+    // slice is update
+    clientLock      *sync.Mutex
+    
     // This slice contains all the client connected to this
     // storage
     clients         []Client
@@ -91,6 +96,9 @@ type Storage struct {
     // This map contains the pending queries. The key is the query id and the
     // value is the client that made that query
     queries         map[string]Client
+    
+    // This channel will pipe a true when the storage disconnect
+    shutdown        chan(bool)
 }
 
 type Client struct {

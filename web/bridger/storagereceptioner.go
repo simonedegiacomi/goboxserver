@@ -1,6 +1,7 @@
 package bridger
 
 import (
+    "sync"
     "time"
     "fmt"
     "goboxserver/mywebsocket"
@@ -15,8 +16,10 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
     // Create the storage manager
     storage := Storage{
         toStorage: make(chan(jsonIncomingData), 10),
+        clientLock: &sync.Mutex{},
         clients: make([]Client, 0),
         queries: make(map[string]Client),
+        shutdown: make(chan(bool)),
     }
     
     // Create a channel that will contains the readers from the storage
@@ -27,11 +30,8 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
         for {
             var incoming jsonIncomingData
             if err := storageConn.ReadJSON(&incoming); err != nil {
-                // Notfy this error to all the clients of this storage
                 
-                // And then remove from the map
-                delete(m.storages, id)
-                fmt.Println("Storage disconnected")
+                storage.shutdown <- true
                 return
             }
             
@@ -77,7 +77,23 @@ func (m *Bridger) serverReceptioner (storageConn *mywebsocket.MyConn) (interface
                         
                     }
                 case <-ticker.C:
+        			// Ping the server
         			storageConn.Ping()
+        			// And also the client
+        			for _, client := range storage.clients {
+        			    client.ws.Ping()
+        			}
+        		case <-storage.shutdown:
+        		    storage.clientLock.Lock()
+        		    // Notify this error to all the clients of this storage
+                    for _, client := range storage.clients {
+                        client.ws.SendEvent("storageInfo", map[string]bool{"connected": false})
+                    }
+                    storage.clientLock.Unlock()
+                    // And then remove from the map
+                    delete(m.storages, id)
+                    fmt.Println("Storage disconnected")
+                    return
             }
         }
     } ()

@@ -1,7 +1,6 @@
 package bridger
 
 import (
-    "time"
     "fmt"
     "goboxserver/mywebsocket"
     "github.com/gorilla/context"
@@ -23,17 +22,15 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
     client := Client{
         ws: clientConn,
     }
+    
+    storage.clientLock.Lock()
+    
     // Add the client on the slice of clients of the user's storage
     storage.clients = append(storage.clients, client)
-
-    // Launch a new go routine that will ping the client
-    go func () {
-        ticker := time.NewTicker(30 * time.Second)
-        for {
-            <- ticker.C
-        	clientConn.Ping()
-        }
-    } ()
+    
+    var clientIndex = len(storage.clients) - 1
+    
+    storage.clientLock.Unlock()
     
     // Launch a new go routine that will read incoming messages from the
     // client and send it to the storage
@@ -44,7 +41,10 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
                 // In this case the client is disconnected
                 fmt.Println("Client disconnected")
                 
-                // TODO: Remove this client from the array on the storage obj
+                storage.clientLock.Lock()
+                storage.clients = append(storage.clients[:clientIndex], storage.clients[clientIndex + 1:]...)
+                
+                storage.clientLock.Unlock()
                 return
             }
             
