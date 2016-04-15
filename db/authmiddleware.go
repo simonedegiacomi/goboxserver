@@ -17,9 +17,33 @@ import (
 )
 
 func (db *DB) AuthMiddleware (response http.ResponseWriter, request *http.Request, next http.HandlerFunc) {
-  
+
+    
+    // Check if the session is valid
+    valid, id := db.CheckRequest(request)
+    
+    // If the session is not valid...
+    if !valid {
+        // ... the client is not authorized
+        http.Error(response, "Not Authorized", 401)
+        return
+    }
+    
+    // Save in the context the id
+    context.Set(request, "userId", id)
+    
+    next(response, request)
+}
+
+func (db *DB) CheckRequest (request *http.Request) (bool, int64) {
+    
     // Get the token parsed by the jwt middleware
-    userToken := context.Get(request, "user")
+    userToken, present := context.GetOk(request, "user")
+    
+    if !present {
+        
+        return false, -1
+    }
     
     // Get the informations contained inside the jwt
     tokenInformations := userToken.(*jwt.Token).Claims
@@ -28,8 +52,7 @@ func (db *DB) AuthMiddleware (response http.ResponseWriter, request *http.Reques
     id, err := strconv.ParseInt(tokenInformations["id"].(string), 10, 64)
     
     if err != nil {
-        http.Error(response, "Server error", 500)
-        return
+        return false, 0
     }
     
     // Calculate the hash of the random code inside the jwt
@@ -45,16 +68,5 @@ func (db *DB) AuthMiddleware (response http.ResponseWriter, request *http.Reques
     // Check if the session is valid
     valid := db.CheckSession(&session)
     
-    // If the session is not valid...
-    if !valid {
-        // ... the client is not authorized
-        http.Error(response, "Not Authorized", 401)
-        return
-    }
-    
-    
-    // Save in the context the id
-    context.Set(request, "userId", id)
-    
-    next(response, request)
+    return valid, id
 }

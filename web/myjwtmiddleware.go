@@ -19,6 +19,9 @@ func (s *Server) newJWTMiddleware () *jwtmiddleware.JWTMiddleware {
             return s.jwtSecret, nil
         },
         
+        // TODO: document this
+        CredentialsOptional: true,
+        
         // When set, the middleware verifies that tokens are signed with the specific signing algorithm
         SigningMethod: jwt.SigningMethodHS256,
         

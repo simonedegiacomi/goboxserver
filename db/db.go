@@ -4,7 +4,7 @@ package db
 
 import (
     "errors"
-    "github.com/jmoiron/sqlx"   
+    "github.com/jmoiron/sqlx"
 )
 
 type DB struct {
@@ -95,10 +95,12 @@ func (db *DB) ExistUser (name string) bool {
 
 // Struct that contains the session informations
 type Session struct {
-    UserId      int64 `db:"user_ID"`
-    UserAgent   string `db:"user_agent"`
-    CodeHash    []byte `db:"code"`
-    SessionType string `db:"type"`
+    Id          int64 `db:"ID"`
+    UserId      int64 `db:"user_ID" json:"userId"`
+    UserAgent   string `db:"user_agent" json:"userAgent"`
+    CodeHash    []byte `db:"code" json:"code"`
+    SessionType string `db:"type" json:"sessionType"`
+    LastUse     int64 `db:"last_use" json:"lastUse"`
 }
 
 func (db *DB) HasStorage (user *User) bool {
@@ -136,6 +138,7 @@ func (db *DB) InvalidateSession (session *Session) error {
 func (db *DB) CheckSession (session *Session) bool {
     // Query the database
     var id int64
+    
     err := db.Get(&id, `SELECT ID FROM session 
         WHERE user_ID = ? AND code = ? AND type = ?`, session.UserId,
         session.CodeHash, session.SessionType)
@@ -152,6 +155,14 @@ func (db *DB) UpdateSessionCode (session *Session, newCode []byte) error {
         
     // Return any error
     return err
+}
+
+func (db *DB) GetUserSessions (user *User) ([]Session, error) {
+    sessions := []Session{}
+    
+    err := db.Select(&sessions, "SELECT * FROM session WHERE user_ID = ?", user.Id)
+    
+    return sessions, err
 }
 
 func (db *DB) ChangePassword (user *User, newPassword []byte) (bool, error) {

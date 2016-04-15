@@ -2,20 +2,34 @@ package bridger
 
 import (
     "fmt"
-    "goboxserver/mywebsocket"
+    ws "goboxserver/mywebsocket"
     "github.com/gorilla/context"
 )
 
-func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{}, bool) {
+// This method is called when a new ws connection is made by a client.
+// This method check if the user is authorized and create a new struct that describe
+// the user.
+func (m *Bridger) clientReceptioner (clientConn *ws.MyConn) bool {
+    
     // Get the user Id
     id := context.Get(clientConn.HttpRequest, "userId").(int64)
 
     // Check if the storage of this user is conencted
     storage, connected := m.storages[id]
     
-    clientConn.SendEvent("storageInfo", map[string]bool {"connected": connected})
+    // Send the storage connection state
+    clientConn.SendEvent(ws.Event {
+        Name: "storageInfo",
+        Data: map[string]bool {
+            "connected": connected,
+        },
+    })
+    
+    // If the storage is not connected, close the connections of this client
     if !connected {
-        return nil, false
+        
+        // Return false, that means close the ws connection
+        return false
     }
     
     // Create a new client object
@@ -23,6 +37,7 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
         ws: clientConn,
     }
     
+    // Lock the array
     storage.clientLock.Lock()
     
     // Add the client on the slice of clients of the user's storage
@@ -30,37 +45,56 @@ func (m *Bridger) clientReceptioner (clientConn *mywebsocket.MyConn) (interface{
     
     var clientIndex = len(storage.clients) - 1
     
+    // Unlock the array
     storage.clientLock.Unlock()
     
-    // Launch a new go routine that will read incoming messages from the
-    // client and send it to the storage
-    go func () {
-        for {
-            var incoming jsonIncomingData
-            if err := clientConn.ReadJSON(&incoming); err != nil {
-                // In this case the client is disconnected
-                fmt.Println("Client disconnected")
-                
-                storage.clientLock.Lock()
-                storage.clients = append(storage.clients[:clientIndex], storage.clients[clientIndex + 1:]...)
-                
-                storage.clientLock.Unlock()
-                return
-            }
+    clientConn.SetListener(func(event ws.Event) {
+        
+        if event.Name == "_error" {
             
-            // Send to the storage channel the new message
-            storage.toStorage <- incoming
+            // In this case the client is disconnected
+            fmt.Println("Client disconnected")
             
-            // If the message of the client is a query, the client
-            // pretends a response
-            if(incoming.QueryId != "") {
-                storage.queries[incoming.QueryId] = client
-            }
+            // So remove it from the clients array in the storage struct
+            
+            // Lock the mutex of the array
+            storage.clientLock.Lock()
+            
+            // Remove from the array
+            storage.clients = append(storage.clients[:clientIndex], storage.clients[clientIndex + 1:]...)
+            
+            // Unlock the mutex of the array
+            storage.clientLock.Unlock()
+            
+            return
         }
-    } ()
+        
+        if event.QueryId != "" {
+            
+            storage.ws.MakeAsyncQuery(event, func(data interface{}){
+                
+                response := ws.Event{
+                    QueryId: event.QueryId,
+                    Name: "queryResponse",
+                    Data: data,
+                }
+                
+                clientConn.SendEvent(response)
+            })
+                
+            return   
+        }
+        
+        // Redirect the event to the storage
+        err := storage.ws.SendEvent(event)
+        
+        if err != nil {
+            
+            // TODO: handle this kind of error
+            fmt.Println("Error proxying message to storage")
+        }
+    })
     
-    fmt.Println("New client connected")
-    
-    // keep the connection
-    return nil, true
+    // keep the connection and don't add any info
+    return true
 }

@@ -5,6 +5,7 @@ import (
     "goboxserver/db"
     "github.com/gorilla/mux"
     "github.com/codegangsta/negroni"
+    "time"
     "goboxserver/mywebsocket"
     "github.com/auth0/go-jwt-middleware"
 )
@@ -20,6 +21,7 @@ type Bridger struct {
 
 // Create a new bridger
 func NewBridger (db *db.DB, router *mux.Router, jwtMiddle *jwtmiddleware.JWTMiddleware) *Bridger {
+    
     // Create the object that contains the object used
     bridger := &Bridger {
         db: db,
@@ -56,6 +58,7 @@ func NewBridger (db *db.DB, router *mux.Router, jwtMiddle *jwtmiddleware.JWTMidd
         negroni.HandlerFunc(jwtMiddle.HandlerWithNext),
         negroni.HandlerFunc(db.AuthMiddleware),
         negroni.Wrap(toStorageHandler)))
+
     // This catch the request from the storage
     transferRouter.Handle("/fromClient", negroni.New(
         negroni.HandlerFunc(jwtMiddle.HandlerWithNext),
@@ -65,15 +68,32 @@ func NewBridger (db *db.DB, router *mux.Router, jwtMiddle *jwtmiddleware.JWTMidd
     // This catch the request from the client
     fromStorageHandler := bridger.NewFromStorageHandler()
     
+    // Add the fromStorage handler that is called by the client to download a file.
+    // When adding this handler, the database auth middleware is intentionally missing,
+    // because also no registered user can download shared files.
+    // The validation of the user id is done by the handler
     transferRouter.Handle("/fromStorage", negroni.New(
         negroni.HandlerFunc(jwtMiddle.HandlerWithNext),
-        negroni.HandlerFunc(db.AuthMiddleware),
         negroni.Wrap(fromStorageHandler)))
         
     transferRouter.Handle("/toClient", negroni.New(
         negroni.HandlerFunc(jwtMiddle.HandlerWithNext),
         negroni.HandlerFunc(db.AuthMiddleware),
         negroni.Wrap(bridger.NewtoClientHandler(fromStorageHandler))))
+        
+    // Create the direct connection handler
+    directConnectHandler := NewDirectConnectionHandler(bridger)
+    router.Handle("/directConnection", negroni.New(
+        negroni.HandlerFunc(jwtMiddle.HandlerWithNext),
+        negroni.HandlerFunc(db.AuthMiddleware),
+        negroni.Wrap(directConnectHandler)))
+        
+    // Public file info handler
+    publicFileInfoHandler := NewPublicInfoHandler(bridger)
+    router.Handle("/info", publicFileInfoHandler)
+        
+    // Start the ping routine
+    go bridger.pingerRoutine()
     
     return bridger
 }
@@ -81,9 +101,9 @@ func NewBridger (db *db.DB, router *mux.Router, jwtMiddle *jwtmiddleware.JWTMidd
 // This struct contains the channel used to cominicate with the storage
 // and to receive the responses
 type Storage struct {
-    // This channel contains the reader of the clients, that
-    // needs to be sended to the storage
-    toStorage       chan(jsonIncomingData)
+    
+    // Ws conenction of the storage
+    ws              *mywebsocket.MyConn
     
     // This lock is used tio synchronize goroutines when the clients
     // slice is update
@@ -93,10 +113,6 @@ type Storage struct {
     // storage
     clients         []Client
     
-    // This map contains the pending queries. The key is the query id and the
-    // value is the client that made that query
-    queries         map[string]Client
-    
     // This channel will pipe a true when the storage disconnect
     shutdown        chan(bool)
 }
@@ -105,18 +121,26 @@ type Client struct {
     ws      *mywebsocket.MyConn
 }
 
-// Json of the data trasmitted in the websockets
-type jsonIncomingData struct {
-    // Name of the event
-    Event               string `json:"event"`
-    // Flag used to indicate if that message is for THIS server
-    ForServer           bool `json:"forServer"`
-    // Flag used to indicate if that message if for all clients
-    BroadcastClients    bool `json:"broadcast"`
-    // Data of the message, is a json object.
-    // Is a map of interface only for convenience (instad of defining
-    // every go struct)
-    Data                map[string]interface{} `json:"data"`
-    // The id of te qury, ignored by this server
-    QueryId             string `json:"_queryId"`
+// This routine pings the client and the storages
+func (b *Bridger) pingerRoutine () {
+    
+    ticker := time.NewTicker(30 * time.Second)
+    
+    for {
+        
+        <- ticker.C
+        
+        // For each storage
+        for _, storage := range(b.storages) {
+            
+            // Ping the storage
+            storage.ws.Ping()
+            
+            // And also his clients
+            for _, client := range(storage.clients) {
+                
+                client.ws.Ping()
+            }
+        }
+    }
 }

@@ -8,22 +8,22 @@ import (
     "encoding/json"
     "io"
     "fmt"
+    ws "goboxserver/mywebsocket"
 )
+
+type pendingUpload struct {
+    fromClient      io.Reader
+}
 
 type toStorageHandler struct {
     storages    map[int64]*Storage
-    uploads     map[string]upload
-}
-
-type upload struct {
-    file    io.Reader
-    done    chan(bool)
+    uploads     map[string]pendingUpload
 }
 
 func (b *Bridger) NewToStorageHandler () *toStorageHandler {
     return &toStorageHandler {
         storages: b.storages,
-        uploads: make(map[string]upload),
+        uploads: make(map[string]pendingUpload),
     }
 }
 
@@ -35,8 +35,7 @@ func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *htt
     // Get the user Id
     id := context.Get(request, "userId").(int64)
     
-    // Now get the informations of the new file from the query string
-    // in the url
+    // Now get the informations of the new file from the query string in the url
     queryParams := request.URL.Query()
     
     
@@ -48,13 +47,9 @@ func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *htt
     
     // Generate a new uploadCode
     uploadKey := strconv.FormatInt(id, 10) + strconv.FormatInt(rand.Int63(), 10)
-    
-    // Create the object that contains the channel used
-    // to synchronize the goruotine and the ResponseWrite
-    // to use to send the file to the client
-    transfer := upload{
-        done: make(chan(bool)),
-        file: request.Body,
+
+    transfer := pendingUpload{
+        fromClient: request.Body,
     }
 
     // add the transfer to the map
@@ -69,19 +64,34 @@ func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *htt
     // And then add the uploadKey value 
     fileInformations["uploadKey"] = uploadKey
     
+    // Advice the storage to make a request to come and get the file
+    storage := h.storages[id]
     
-    // Send the message to the storage using his dedicated channel
-    h.storages[id].toStorage <- jsonIncomingData{
-        Event: "comeToGetTheFile",
+    queryRes := storage.ws.MakeSyncQuery(ws.Event {
+        Name: "comeToGetTheFile",
         Data: fileInformations,
-    }
+    }).(map[string]interface{})
     
-    // Lock this routine until the file is sent
-    <- transfer.done
+    success := queryRes["success"].(bool)
+    
+    if !success {
+        
+        // Get the error
+        storageError := queryRes["error"].(string)
+        
+        // Get the most appropriate http response code
+        appropriateHttpCode := queryRes["httpCode"].(int)
+        
+        // Send the htpp error
+        http.Error(response, storageError, appropriateHttpCode)
+        
+        return
+    }
+
 }
 
 type fromClientHandler struct {
-    uploads     map[string]upload
+    uploads     map[string]pendingUpload
 }
 
 func (b *Bridger) NewFromClientHandler(toStorage *toStorageHandler) *fromClientHandler {
@@ -94,7 +104,7 @@ type catchUploadRequest struct {
     UploadKey   string `json:"uploadKey"`
 }
 
-// This is the handle for the request made by the stoorage when is
+// This is the handle for the request made by the storage when is
 // notified that the client want to upload a file. This request desn't need
 // to be authenticated because needs a specia 'uploadKey' that is random and
 // sent throught HTTPS.
@@ -113,6 +123,8 @@ func (h *fromClientHandler) ServeHTTP (response http.ResponseWriter, request *ht
     // Get hte trasnfer object from the map
     transfer, exist := h.uploads[catchRequest.UploadKey]
     
+    fromClient := transfer.fromClient
+    
     // If the transfer doesn't exist close the request
     if !exist {
         http.Error(response, "No transfer found", 400)
@@ -120,10 +132,8 @@ func (h *fromClientHandler) ServeHTTP (response http.ResponseWriter, request *ht
     }
     
     // Copy in the response of THIS response the boody of the CLIENT request
-    bytes, err := io.Copy(response, transfer.file)
+    bytes, err := io.Copy(response, fromClient)
     
-    fmt.Println("Transfer %v bytes", bytes)
+    fmt.Printf("Transfer %v bytes", bytes)
     
-    // Unlock the other goroutine
-    transfer.done <- true
 }

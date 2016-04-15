@@ -59,6 +59,12 @@ func NewServer (db *db.DB, urls map[string]string) (*Server, error) {
 	// Exist user handler
 	user.Handle("/exist", handlers.NewExistHandler(db)).Methods("GET")
 	
+	// Invalidate a token, same authorization of the check handler
+	user.Handle("/logout", negroni.New(
+	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
+	    negroni.HandlerFunc(db.AuthMiddleware),
+	    negroni.Wrap(handlers.NewLogoutHandler(db))))
+	
 	// Register the Handle that check a token and create a new one
 	// This handler muyst be accessible only if the reqiest contains
 	// a valid jwt, so i register a new negroni middlware that read the
@@ -68,21 +74,30 @@ func NewServer (db *db.DB, urls map[string]string) (*Server, error) {
 	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
 	    negroni.HandlerFunc(db.AuthMiddleware),
 	    negroni.Wrap(handlers.NewCheckHandler(db, ejwt))))
-	
-	// Invalidate a token, same authorization of the check handler
-	user.Handle("/logout", negroni.New(
-	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
-	    negroni.HandlerFunc(db.AuthMiddleware),
-	    negroni.Wrap(handlers.NewLogoutHandler(db))))
 	    
 	// Change password handler
 	user.Handle("/changePassword", negroni.New(
 	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
 	    negroni.HandlerFunc(db.AuthMiddleware),
 	    negroni.Wrap(handlers.NewChangePasswordHandler(db))))
+	    
+	sessionHandler := handlers.NewSessionHandler(db)
+	user.Handle("/sessions", negroni.New(
+	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
+	    negroni.HandlerFunc(db.AuthMiddleware),
+	    negroni.Wrap(http.HandlerFunc(sessionHandler.Get)))).Methods("GET")
+	user.Handle("/delete_session", negroni.New(
+	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
+	    negroni.HandlerFunc(db.AuthMiddleware),
+	    negroni.Wrap(http.HandlerFunc(sessionHandler.Delete)))).Methods("POST")
 	
 	// Handler for the user's profiles image
-	user.Handle("/image/{username}", handlers.NewImageHandler(db))
+	imageHandler := handlers.NewImageHandler(db);
+	user.Handle("/image/{username}", http.HandlerFunc(imageHandler.Get)).Methods("GET")
+	user.Handle("/image/{username}", negroni.New(
+	    negroni.HandlerFunc(jwtMiddleware.HandlerWithNext),
+	    negroni.HandlerFunc(db.AuthMiddleware),
+	    negroni.Wrap(http.HandlerFunc(imageHandler.Post)))).Methods("POST")
 	
 	// The part of the server that manage the ws connections has his own router
     
