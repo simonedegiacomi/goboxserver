@@ -105,13 +105,12 @@ type Storage struct {
     // Ws conenction of the storage
     ws              *mywebsocket.MyConn
     
-    // This lock is used tio synchronize goroutines when the clients
+    // This lock is used to synchronize goroutines when the clients
     // slice is update
     clientLock      *sync.Mutex
     
-    // This slice contains all the client connected to this
-    // storage
-    clients         []Client
+    // This map contains all the client connected to this storage
+    clients         map[Client]bool
     
     // This channel will pipe a true when the storage disconnect
     shutdown        chan(bool)
@@ -137,7 +136,7 @@ func (b *Bridger) pingerRoutine () {
             storage.ws.Ping()
             
             // And also his clients
-            for _, client := range(storage.clients) {
+            for client := range(storage.clients) {
                 
                 client.ws.Ping()
             }

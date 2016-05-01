@@ -90,6 +90,7 @@ func (h *fromStorageHandler) ServeHTTP (response http.ResponseWriter, request *h
     details := map[string]interface{} {
         "downloadKey": downloadKey,
         "ID": queryParams.Get("ID"),
+        "path": queryParams.Get("path"),
         "preview": queryParams.Get("preview"),
         "authorized": authorized,
         "range": headers.Get("Content-Range"),
@@ -115,10 +116,10 @@ func (h *fromStorageHandler) ServeHTTP (response http.ResponseWriter, request *h
         storageError := queryRes["error"].(string)
         
         // Get the most appropriate http response code
-        appropriateHttpCode := queryRes["httpCode"].(int)
+        appropriateHttpCode := queryRes["httpCode"].(float64)
         
         // Send the htpp error
-        http.Error(response, storageError, appropriateHttpCode)
+        http.Error(response, storageError, int(appropriateHttpCode))
         
         return
     }

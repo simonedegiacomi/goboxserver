@@ -21,8 +21,8 @@ func (m *Bridger) serverReceptioner (storageConn *ws.MyConn) bool {
         // Lock for the clients array
         clientLock: &sync.Mutex{},
         
-        // Array of the clients connected to this sotrage
-        clients: make([]Client, 0),
+        // Map of the clients connected to this sotrage
+        clients: make(map[Client]bool),
         
         // Shutdow channel
         shutdown: make(chan(bool)),
@@ -36,11 +36,14 @@ func (m *Bridger) serverReceptioner (storageConn *ws.MyConn) bool {
 		    storage.clientLock.Lock()
         		    
 		    // Notify this error to all the clients of this storage
-            for _, client := range storage.clients {
+            for client := range storage.clients {
                 client.ws.SendEvent(ws.Event{
                     Name: "storageInfo",
                     Data: map[string]bool{"connected": false},
                 })
+                // TODO: add a function to close the client, not close the
+                // raw socket!
+                client.ws.Close()
             }
                     
             // Unlock the array
@@ -53,7 +56,7 @@ func (m *Bridger) serverReceptioner (storageConn *ws.MyConn) bool {
         }
       
         // Repeat this event to all the clients
-        for _, client := range storage.clients {
+        for client, _ := range storage.clients {
             
             client.ws.SendEvent(event)
         }

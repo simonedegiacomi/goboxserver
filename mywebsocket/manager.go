@@ -260,3 +260,7 @@ func (c *MyConn) MakeSyncQuery (query Event) interface{} {
     // reader routine.
     return <- resChannel
 }
+
+func (c *MyConn) Close () error {
+    return c.ws.Close()
+}

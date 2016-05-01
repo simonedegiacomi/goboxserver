@@ -67,7 +67,7 @@ func (h *PublicInfoHandler) ServeHTTP (response http.ResponseWriter, request *ht
     
     // Prepare the query
     query := ws.Event{
-        Name: "",
+        Name: "info",
         Data: map[string]interface{} {
             "file": file,
             "public": true,

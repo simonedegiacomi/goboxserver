@@ -40,10 +40,8 @@ func (m *Bridger) clientReceptioner (clientConn *ws.MyConn) bool {
     // Lock the array
     storage.clientLock.Lock()
     
-    // Add the client on the slice of clients of the user's storage
-    storage.clients = append(storage.clients, client)
-    
-    var clientIndex = len(storage.clients) - 1
+    // Add the client to the map of clients of this storage
+    storage.clients[client] = true
     
     // Unlock the array
     storage.clientLock.Unlock()
@@ -57,13 +55,13 @@ func (m *Bridger) clientReceptioner (clientConn *ws.MyConn) bool {
             
             // So remove it from the clients array in the storage struct
             
-            // Lock the mutex of the array
+            // Lock the mutex of the map
             storage.clientLock.Lock()
             
             // Remove from the array
-            storage.clients = append(storage.clients[:clientIndex], storage.clients[clientIndex + 1:]...)
+            delete(storage.clients, client)
             
-            // Unlock the mutex of the array
+            // Unlock the mutex of the map
             storage.clientLock.Unlock()
             
             return
