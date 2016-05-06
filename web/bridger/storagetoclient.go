@@ -5,6 +5,7 @@ import (
     "math/rand"
     "goboxserver/db"
     "io"
+    "fmt"
     "strconv"
     ws "goboxserver/mywebsocket"
 )
@@ -93,7 +94,7 @@ func (h *fromStorageHandler) ServeHTTP (response http.ResponseWriter, request *h
         "path": queryParams.Get("path"),
         "preview": queryParams.Get("preview"),
         "authorized": authorized,
-        "range": headers.Get("Content-Range"),
+        "range": headers.Get("Range"),
     }
     
     query := ws.Event{
@@ -111,6 +112,8 @@ func (h *fromStorageHandler) ServeHTTP (response http.ResponseWriter, request *h
     success := queryRes["success"].(bool)
     
     if !success {
+        
+        fmt.Println(queryRes)
         
         // Get the error
         storageError := queryRes["error"].(string)
@@ -146,7 +149,7 @@ func (h *toClientHandler) ServeHTTP (response http.ResponseWriter, request *http
     // Get the 'downloadKey' from the url queryParams
     downloadKey := request.URL.Query().Get("downloadKey")
     
-    if len(downloadKey) <= 0 {
+    if downloadKey == "" {
         http.Error(response, "Error while parsing the parameters", 400)
         return;
     }
@@ -162,8 +165,21 @@ func (h *toClientHandler) ServeHTTP (response http.ResponseWriter, request *http
     toClient := transfer.toClient
     
     // Set the content type and the size
-    toClient.Header().Set("Content-Length", request.Header.Get("Content-Length"))
-    toClient.Header().Set("Content-Type", request.Header.Get("Content-Type"))
+    if request.Header.Get("Content-Length") != "" {
+        toClient.Header().Set("Content-Length", request.Header.Get("Content-Length"))
+    }
+    if request.Header.Get("Content-Type") != "" {
+        toClient.Header().Set("Content-Type", request.Header.Get("Content-Type"))
+    }
+    if contentRange := request.Header.Get("Content-Range"); contentRange != "" {
+        toClient.Header().Set("Content-Range", contentRange)
+        fmt.Println("Length: " + request.Header.Get("Content-Length"))
+        
+        toClient.WriteHeader(206)
+    } else {
+        toClient.WriteHeader(200)
+    }
+    
     
     // Copy all the bytes from the body of the storage post request to the client
     // get request

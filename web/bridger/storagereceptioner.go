@@ -12,6 +12,20 @@ func (m *Bridger) serverReceptioner (storageConn *ws.MyConn) bool {
     // Get the user Id
     id := context.Get(storageConn.HttpRequest, "userId").(int64)
     
+    // Check if another storage is already connected
+    _, connected := m.storages[id]
+    
+    storageConn.SendEvent(ws.Event{
+        Name: "initialization",
+        Data: map[string]bool{
+            "success": !connected,
+        },
+    })
+    
+    if connected {
+        return false
+    }
+    
     // Create the storage manager
     storage := Storage{
         
