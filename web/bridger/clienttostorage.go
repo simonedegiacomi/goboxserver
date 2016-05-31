@@ -65,7 +65,13 @@ func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *htt
     fileInformations["uploadKey"] = uploadKey
     
     // Advice the storage to make a request to come and get the file
-    storage := h.storages[id]
+    storage, connected := h.storages[id]
+    
+    // Assert that the storage is online
+    if !connected {
+        http.Error(response, "storage offline", 404)
+        return
+    }
     
     queryRes := storage.ws.MakeSyncQuery(ws.Event {
         Name: "comeToGetTheFile",
@@ -80,10 +86,10 @@ func (h *toStorageHandler) ServeHTTP (response http.ResponseWriter, request *htt
         storageError := queryRes["error"].(string)
         
         // Get the most appropriate http response code
-        appropriateHttpCode := queryRes["httpCode"].(int)
+        appropriateHttpCode := queryRes["httpCode"].(float64)
         
         // Send the htpp error
-        http.Error(response, storageError, appropriateHttpCode)
+        http.Error(response, storageError, int(appropriateHttpCode))
         
         return
     }

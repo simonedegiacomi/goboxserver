@@ -6,6 +6,7 @@ import (
     "fmt"
     "goboxserver/db"
     "goboxserver/web"
+    "flag"
 )
 
 func main () {
@@ -28,8 +29,14 @@ func main () {
         return
     }
     
+    port := flag.Arg(0)
+    
+    if port == "" {
+        port = "8083"
+    }
+    
     // And listen
     fmt.Println("Server running")
-    fmt.Println(server.ListenAndServer("localhost:8083"))
+    fmt.Println(server.ListenAndServer("localhost:" + port))
     
 }
