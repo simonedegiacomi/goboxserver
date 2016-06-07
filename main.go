@@ -4,14 +4,16 @@ import (
     "github.com/jmoiron/sqlx"
     _ "github.com/go-sql-driver/mysql"
     "fmt"
+    "log"
     "goboxserver/db"
     "goboxserver/web"
     "flag"
+    "os"
 )
 
 func main () {
     // Connect to the database
-    db := db.NewDB(sqlx.MustConnect("mysql", "simonedegiacomi@/c9"))
+    db := db.NewDB(sqlx.MustConnect(os.Getenv("DATABASE_KIND"), os.Getenv("DATABASE_URL")))
     
     // URL of the program
     // TODO: move to an external file
@@ -36,7 +38,7 @@ func main () {
     }
     
     // And listen
-    fmt.Println("Server running")
-    fmt.Println(server.ListenAndServer("localhost:" + port))
+    log.Println("Server running")
+    log.Println(server.ListenAndServer(":" + port))
     
 }

@@ -19,6 +19,8 @@ func NewDB (db *sqlx.DB) *DB {
     }
 }
 
+
+
 // Struct that holds the informations of the user
 type User struct {
     Id              int64 `db:"ID"`
